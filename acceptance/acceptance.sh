@@ -44,7 +44,8 @@ if [ "$SKIP" = 0 ]; then
   sha256sum "$REL" 2>/dev/null > "$OUT/release.sha256" || shasum -a 256 "$REL" > "$OUT/release.sha256"
   scp -q "$REL" "$HOST:$RD/"
 fi
-ssh "$HOST" "bash $RD/remote.sh $RD $SKIP $(basename "${REL:-none}") $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $(printf '%q ' "$@")" \
+XARGS=""; [ $# -gt 0 ] && XARGS=$(printf '%q ' "$@")
+ssh "$HOST" "bash $RD/remote.sh $RD $SKIP $(basename "${REL:-none}") $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $XARGS" \
   || say "remote.sh exited non-zero (kept going to pull the evidence)"
 say "pulling evidence"
 rsync -a "$HOST:$RD/" "$OUT/remote/" --exclude '*.tar.gz' --exclude prime-rl --exclude venv

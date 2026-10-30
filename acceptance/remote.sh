@@ -3,7 +3,7 @@
 #   remote.sh RD SKIP_INSTALL RELEASE_TAR ADAPTER_COMMIT MODEL_URL MODEL KEYVAR N FORK R STYLE TURNS [extra eval args]
 set -uo pipefail
 RD=$1 SKIP=$2 REL=$3 ADAPTER_C=$4 URL=$5 MODEL=$6 KEYVAR=$7 N=$8 FORK=$9 R=${10} STYLE=${11} TURNS=${12}; shift 12
-EXTRA=("$@")
+EXTRA=(); for a in "$@"; do [ -n "$a" ] && EXTRA+=("$a"); done
 PRIME_RL_COMMIT=a566e5d8e2a903f44d901e114d5d510888b93303     # verifiers 60290d43 is its deps/verifiers submodule
 TASKS=(e0df059f-28a6-4169-924f-b9623e7184cc 035f41ba-6653-43ab-aa63-c86d449d62e5 2ad9387a-65d8-4e33-ad5b-7580065a27ca
        a4d98375-215b-4a4d-aee9-3d4370fccc41 bedcedc4-4d72-425e-ad62-21960b11fe0d f9be0997-4b7c-45c5-b05c-4612b44a6118
