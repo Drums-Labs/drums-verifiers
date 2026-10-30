@@ -26,7 +26,16 @@ def traces_of(run_dir):
     return out
 
 
-def images(trace):
+def save_screens(run, trace, raw):
+    """The first and the last screenshot the model saw in this trace, as PNG files under RD/screens/<run>/ (for a person)."""
+    env = ((trace.get("info") or {}).get("drums") or {}).get("env") or trace.get("id", "x")[:8]
+    d = os.path.join(RD, "screens", run)
+    os.makedirs(d, exist_ok=True)
+    for tag, b in (("first", raw[0]), ("last", raw[-1])) if raw else ():
+        open(os.path.join(d, f"{env}-{tag}.png"), "wb").write(b)
+
+
+def images(trace, raw=None):
     """(role, sha256, bytes) of every image the model was given, in order."""
     out = []
     for n in trace.get("nodes", []):
@@ -37,6 +46,8 @@ def images(trace):
             if url.startswith("data:image"):
                 b = base64.b64decode(url.split(",", 1)[1])
                 out.append((m.get("role"), hashlib.sha256(b).hexdigest()[:16], len(b)))
+                if raw is not None:
+                    raw.append(b)
     return out
 
 
@@ -46,7 +57,9 @@ def run_summary(name):
     tr = traces_of(d) if os.path.isdir(os.path.join(d, "out")) else []
     shots = []
     for ep, t in tr:
-        im = images(t)
+        raw = []
+        im = images(t, raw)
+        save_screens(name, t, raw)
         tool_calls = sum(len((n.get("message") or {}).get("tool_calls") or []) for n in t.get("nodes", []))
         shots.append({"env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
                       "tool_images": sum(1 for r, _, _ in im if r == "tool"), "tool_calls": tool_calls,

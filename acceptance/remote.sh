@@ -90,3 +90,4 @@ sudo journalctl -u drumsd --since "-3h" --no-pager > drumsd-journal.txt 2>/dev/n
 prime-rl/.venv/bin/python summarize.py "$RD" > summary.txt; cat summary.txt
 # the token never leaves the host: scrub it from every text file before acceptance.sh pulls the directory
 T=$(cat "$RD/.drums-token"); grep -rlF "$T" "$RD" --exclude=.drums-token 2>/dev/null | while read -r f; do sed -i "s|$T|[REDACTED]|g" "$f"; echo "scrubbed $f"; done
+python3 -c "import json, sys; sys.exit(0 if json.load(open('$RD/summary.json'))['verdict']['pass'] else 3)"
