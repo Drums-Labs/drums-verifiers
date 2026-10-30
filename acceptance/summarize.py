@@ -105,7 +105,9 @@ if "B-fork" in runs:
 if "C-control" in runs:
     c = runs["C-control"]
     checks["C-control: every child dropped as drums_invalid (alive gate), none rewarded"] = c["traces_recorded"] > 0 and c["dropped"] == c["traces_recorded"] and all(k.startswith("drums_invalid") for k in c["drop_reasons"])
-verdict = {"pass": all(checks.values()), "checks": checks}
+phases = [json.loads(l) for l in open(os.path.join(RD, "phases.jsonl"))] if os.path.exists(os.path.join(RD, "phases.jsonl")) else []
+cut = [p["phase"] for p in phases if p["phase"].startswith("run-") and p.get("rc") == 124]
+verdict = {"pass": all(checks.values()) and not cut, "partial_at_deadline": cut, "checks": checks}
 out = {"verdict": verdict, "runs": runs}
 for f in ("versions.txt", "phases.jsonl", "host.txt"):
     p = os.path.join(RD, f)
