@@ -23,8 +23,14 @@ TOK=$(curl -sf -m 2 -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" http://
 if [ "$SKIP" = 0 ]; then
   t=$(date +%s); say "install: $REL"
   tar xzf "$REL" && D="${REL%.tar.gz}"
-  ( time sudo "./$D/install.sh" ) > install.out 2>&1; rc=$?
-  sed -i -E 's/(token: +)[^ ]+/\1[REDACTED]/' install.out
+  for att in 1 2 3; do       # install.sh is idempotent; snapshot.ubuntu.com sometimes answers apt with 503
+    ( time sudo "./$D/install.sh" ) > "install-attempt$att.out" 2>&1; rc=$?
+    sed -i -E 's/(token: +)[^ ]+/\1[REDACTED]/' "install-attempt$att.out"
+    phase "install-attempt$att" "$t" "$rc"
+    cp "install-attempt$att.out" install.out
+    [ "$rc" = 0 ] && break
+    say "install attempt $att rc=$rc: $(grep -m1 FAILED "install-attempt$att.out")"; sleep 30
+  done
   phase install "$t" "$rc"
   sudo cp /var/lib/drums/install-receipt.json /var/lib/drums/install-phases.jsonl . 2>/dev/null; sudo chown "$(id -u)" install-receipt.json install-phases.jsonl 2>/dev/null
   [ "$rc" = 0 ] || fail "install.sh rc=$rc"
