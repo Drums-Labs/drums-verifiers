@@ -54,7 +54,10 @@ def wait_until(t_abs):
 
 
 def slot_number(rec):
-    """drumsd slot ids are "s<number>" (s101); the number names the slot's cgroups (drumsbench-rootfs-<mark>-<n>-pool.scope)."""
+    """The slot number names the slot's cgroups (drumsbench-rootfs-<mark>-<n>-pool.scope): the record's `num`. (Ids are not
+    always "s<num>": fork children are "s100-2".)"""
+    if isinstance(rec.get("num"), int):
+        return rec["num"]
     sid = str(rec.get("id") or "")
     return int(sid[1:]) if sid[:1] == "s" and sid[1:].isdigit() else None
 
