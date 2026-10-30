@@ -3,7 +3,7 @@
 #
 #   acceptance/soak.sh --host drums-acceptance --base /opt/drums-acceptance/<install-only ts> --model-url http://<ip>:8000/v1 \
 #       [--model scalecua] [--minutes 90] [--kill-drumsd-at 30] [--crash-restore-at 60] [--tasks 4] [--fork 4] [--rollouts 2]
-#       [--max-turns 15] [--out DIR]
+#       [--max-turns 15] [--hard-stop-utc 2026-10-30T22:40:00Z] [--out DIR]
 #   acceptance/soak.sh --host drums-acceptance --pull /opt/drums-soak/<ts> [--out DIR]      # fetch the evidence afterwards
 #
 # The loop runs on the host under setsid (soak-remote.sh): closing the laptop does not stop it. Each iteration is a full
@@ -11,16 +11,19 @@
 # Injected: drumsd SIGKILLed once (systemd restarts it; envs are reconciled from the journal) and one crashed restore (a slot's
 # cgroups killed while CRIU restores it). soak_summary.py reports episodes, valid rewards, invalid-as-valid (cross-checked
 # against drumsd's own verify events), recoveries, and every command that was not issued by the loop itself (none).
+# --hard-stop-utc: no model call after this time. No iteration starts after it, and a running one is killed at it (its
+# summary is marked partial_at_deadline), so the model endpoint is released on time whatever the iteration length.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; PKG="$(cd "$HERE/.." && pwd)"
 HOST=""; BASE=""; URL=""; MODEL=""; KEYVAR="ACCEPT_API_KEY"; MIN=90; KILL_AT=30; CRASH_AT=60; N=4; FORK=4; R=2; TURNS=15
-STYLE=scalecua; KEEP=5; TEMP=0.8; MAXTOK=2048; PAUSE=2; OUT=""; PULL=""
+STYLE=scalecua; KEEP=5; TEMP=0.8; MAXTOK=2048; PAUSE=2; OUT=""; PULL=""; HARD=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --host) HOST=$2; shift 2;; --base) BASE=$2; shift 2;; --model-url) URL=$2; shift 2;; --model) MODEL=$2; shift 2;;
     --api-key-var) KEYVAR=$2; shift 2;; --minutes) MIN=$2; shift 2;; --kill-drumsd-at) KILL_AT=$2; shift 2;;
     --crash-restore-at) CRASH_AT=$2; shift 2;; --tasks) N=$2; shift 2;; --fork) FORK=$2; shift 2;; --rollouts) R=$2; shift 2;;
     --max-turns) TURNS=$2; shift 2;; --out) OUT=$2; shift 2;; --pull) PULL=$2; shift 2;;
+    --hard-stop-utc) HARD=$(python3 -c "import datetime,sys; print(int(datetime.datetime.fromisoformat(sys.argv[1].replace('Z','+00:00')).timestamp()))" "$2"); shift 2;;
     -h|--help) sed -n 2,16p "$0"; exit 0;; *) echo "unknown option $1" >&2; exit 2;;
   esac
 done
@@ -38,5 +41,5 @@ TMP=$(mktemp -d); git -C "$PKG" bundle create -q "$TMP/drums-verifiers.bundle" H
 ssh "$HOST" "sudo mkdir -p $SOAK && sudo chown \$(id -u):\$(id -g) $SOAK && test -x $BASE/prime-rl/.venv/bin/eval"
 scp -q "$TMP/drums-verifiers.bundle" "$HERE/remote.sh" "$HERE/summarize.py" "$HERE/soak-remote.sh" "$HERE/inject.py" "$HERE/soak_summary.py" "$HOST:$SOAK/"
 rm -rf "$TMP"
-ssh "$HOST" "cd $SOAK || exit 1; setsid nohup bash soak-remote.sh $SOAK $BASE $MIN $KILL_AT $CRASH_AT $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $KEEP $TEMP $MAXTOK $PAUSE > soak.stdout 2>&1 < /dev/null & echo started"
+ssh "$HOST" "cd $SOAK || exit 1; setsid nohup bash soak-remote.sh $SOAK $BASE $MIN $KILL_AT $CRASH_AT $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $KEEP $TEMP $MAXTOK $PAUSE $HARD > soak.stdout 2>&1 < /dev/null & echo started"
 echo "soak running on $HOST in $SOAK (adapter $ADAPTER_C); pull with: $0 --host $HOST --pull $SOAK"

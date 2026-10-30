@@ -36,6 +36,7 @@ for it in sorted(glob.glob(os.path.join(SOAK, "iter-*"))):
             n["episodes_failed"] += bool(r.get("episode_failed") or r.get("env_create_failed"))
             n["admission_waits"] += len(r.get("admission_waits") or [])
     iters.append({"iter": name, "pass": (s.get("verdict") or {}).get("pass"),
+                  "partial_at_deadline": (s.get("verdict") or {}).get("partial_at_deadline") or [],
                   "failed_checks": [k for k, v in ((s.get("verdict") or {}).get("checks") or {}).items() if not v], **n})
 meta = {json.loads(l)["iter"]: json.loads(l) for l in open(os.path.join(SOAK, "iterations.jsonl"))} if os.path.exists(os.path.join(SOAK, "iterations.jsonl")) else {}
 for x in iters:
@@ -83,7 +84,8 @@ for x in iters:
     for k in ("traces", "valid_rewarded", "dropped", "errored", "fork_child_failed", "episodes_failed", "admission_waits"):
         tot[k] += x.get(k, 0)
 out = {"wall_minutes": round((t_end - t0) / 60, 1) if t0 and t_end else None, "iterations": len(iters),
-       "iterations_passed": sum(1 for x in iters if x["pass"] is True), "totals": dict(tot),
+       "iterations_passed": sum(1 for x in iters if x["pass"] is True),
+       "iterations_cut_at_hard_stop": [x["iter"] for x in iters if x["partial_at_deadline"]], "totals": dict(tot),
        "rewards": dict(collections.Counter(str(r.get("reward")) for r in rewarded)),
        "invalid_as_valid": len(bad), "invalid_as_valid_rows": bad[:50],
        "drumsd_verify_events": n_events, "drumsd_verify_invalid": len(invalid_verified), "rewarded_on_drumsd_invalid": len(rew_invalid_slots),
