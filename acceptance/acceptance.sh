@@ -5,7 +5,12 @@
 #
 #   acceptance/acceptance.sh --host drums-exp2 --release dist/drums-release-<commit>.tar.gz --model-url http://10.0.0.5:8000/v1 \
 #       [--model NAME] [--api-key-var VAR] [--tasks 4] [--fork 4] [--rollouts 2] [--tool-style scalecua] [--max-turns 15] \
-#       [--out DIR] [--skip-install] [-- extra prime-rl eval args]
+#       [--out DIR] [--skip-install] [--install-only] [--deadline-min M] [-- extra prime-rl eval args]
+#
+# --install-only     install Drums + prime-rl + adapter and stop (run ahead of a short model window); then re-run with
+#                    --skip-install when the model is free.
+# --deadline-min M   hard stop: runs still going M minutes after start are killed (timeout), the rest are skipped, and the
+#                    partial is summarised and pulled; the model endpoint is released by then.
 #
 # --model-url mock   runs the scripted mock policy on the host (plumbing check, no model).
 # --model-url URL    any OpenAI-compatible chat endpoint (vLLM) REACHABLE FROM THE HOST, with tool calling enabled.
@@ -18,16 +23,19 @@
 # reward; run C 100% dropped; every trace has screenshots in its tool results; fork children are distinct envs of one parent.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; PKG="$(cd "$HERE/.." && pwd)"
-HOST=""; REL=""; URL=""; MODEL=""; KEYVAR="ACCEPT_API_KEY"; N=4; FORK=4; R=2; STYLE="scalecua"; TURNS=15; OUT=""; SKIP=0
+HOST=""; REL=""; URL=""; MODEL=""; KEYVAR="ACCEPT_API_KEY"; N=4; FORK=4; R=2; STYLE="scalecua"; TURNS=15; OUT=""; SKIP=0; ONLY=0; DL=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --host) HOST=$2; shift 2;; --release) REL=$2; shift 2;; --model-url) URL=$2; shift 2;; --model) MODEL=$2; shift 2;;
     --api-key-var) KEYVAR=$2; shift 2;; --tasks) N=$2; shift 2;; --fork) FORK=$2; shift 2;; --rollouts) R=$2; shift 2;;
-    --tool-style) STYLE=$2; shift 2;; --max-turns) TURNS=$2; shift 2;; --out) OUT=$2; shift 2;; --skip-install) SKIP=1; shift;;
+    --tool-style) STYLE=$2; shift 2;; --max-turns) TURNS=$2; shift 2;; --out) OUT=$2; shift 2;; --skip-install) SKIP=1; shift;; --install-only) ONLY=1; shift;;
+    --deadline-min) DL=$2; shift 2;;
     --) shift; break;; -h|--help) sed -n 2,22p "$0"; exit 0;; *) echo "unknown option $1" >&2; exit 2;;
   esac
 done
+[ "$ONLY" = 1 ] && URL=${URL:-none}
 [ -n "$HOST" ] && [ -n "$URL" ] || { echo "--host and --model-url are required" >&2; exit 2; }
+DEADLINE=0; [ "$DL" != 0 ] && DEADLINE=$(( $(date +%s) + DL * 60 ))
 [ "$SKIP" = 1 ] || [ -f "$REL" ] || { echo "--release TAR is required unless --skip-install" >&2; exit 2; }
 TS=$(date -u +%Y%m%dT%H%MZ); OUT=${OUT:-$PWD/acceptance-$TS}; mkdir -p "$OUT"
 exec > >(tee -a "$OUT/acceptance.log") 2>&1
@@ -45,9 +53,9 @@ if [ "$SKIP" = 0 ]; then
   scp -q "$REL" "$HOST:$RD/"
 fi
 XARGS=""; [ $# -gt 0 ] && XARGS=$(printf '%q ' "$@")
-ssh "$HOST" "bash $RD/remote.sh $RD $SKIP $(basename "${REL:-none}") $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $XARGS" \
+ssh "$HOST" "bash $RD/remote.sh $RD $SKIP $(basename "${REL:-none}") $ADAPTER_C $(printf %q "$URL") $(printf %q "${MODEL:-}") $KEYVAR $N $FORK $R $STYLE $TURNS $ONLY $DEADLINE $XARGS" \
   || say "remote.sh exited non-zero (kept going to pull the evidence)"
 say "pulling evidence"
 rsync -a "$HOST:$RD/" "$OUT/remote/" --exclude '*.tar.gz' --exclude prime-rl --exclude venv
-python3 -c "import json; s=json.load(open('$OUT/remote/summary.json')); print(json.dumps(s['verdict'], indent=1))" || true
+[ "$ONLY" = 1 ] || python3 -c "import json; s=json.load(open('$OUT/remote/summary.json')); print(json.dumps(s['verdict'], indent=1))" || true
 say "done: $OUT"

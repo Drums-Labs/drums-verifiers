@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # remote.sh: the host side of acceptance.sh (run by it over ssh; not meant to be run by hand).
-#   remote.sh RD SKIP_INSTALL RELEASE_TAR ADAPTER_COMMIT MODEL_URL MODEL KEYVAR N FORK R STYLE TURNS [extra eval args]
+#   remote.sh RD SKIP_INSTALL RELEASE_TAR ADAPTER_COMMIT MODEL_URL MODEL KEYVAR N FORK R STYLE TURNS INSTALL_ONLY DEADLINE [extra]
 set -uo pipefail
-RD=$1 SKIP=$2 REL=$3 ADAPTER_C=$4 URL=$5 MODEL=$6 KEYVAR=$7 N=$8 FORK=$9 R=${10} STYLE=${11} TURNS=${12}; shift 12
+RD=$1 SKIP=$2 REL=$3 ADAPTER_C=$4 URL=$5 MODEL=$6 KEYVAR=$7 N=$8 FORK=$9 R=${10} STYLE=${11} TURNS=${12} ONLY=${13} DEADLINE=${14}; shift 14
 EXTRA=(); for a in "$@"; do [ -n "$a" ] && EXTRA+=("$a"); done
 PRIME_RL_COMMIT=a566e5d8e2a903f44d901e114d5d510888b93303     # verifiers 60290d43 is its deps/verifiers submodule
 TASKS=(e0df059f-28a6-4169-924f-b9623e7184cc 035f41ba-6653-43ab-aa63-c86d449d62e5 2ad9387a-65d8-4e33-ad5b-7580065a27ca
@@ -50,6 +50,7 @@ echo "drums-verifiers $ADAPTER_C" >> versions.txt
 prime-rl/.venv/bin/python -c "import drums, verifiers; print('drums SDK', drums.__version__)" >> versions.txt
 sudo cat /var/lib/drums/install-receipt.json 2>/dev/null | python3 -c "import json,sys; r=json.load(sys.stdin); print('drumsd', r['drumsd_commit'], 'criu', r['lock']['sources']['drums-criu']['commit'], 'criu sha256', r['criu_sha256'])" >> versions.txt
 phase setup "$t" 0
+if [ "$ONLY" = 1 ]; then say "install-only: done"; exit 0; fi
 
 # 3. the model: the given endpoint, or the scripted mock on this host
 MOCK_PID=""
@@ -71,10 +72,16 @@ SEL=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1:]))" "${TASKS[@]:
 run() { # run NAME [eval args...]
   local name=$1; shift; local t; t=$(date +%s); say "run $name"
   mkdir -p "runs/$name"
-  PATH="$RD/prime-rl/.venv/bin:$PATH" DRUMS_RECORD="$RD/runs/$name/record.jsonl" "$RD/prime-rl/.venv/bin/eval" drums-verifiers \
+  local TO=()
+  if [ "$DEADLINE" != 0 ]; then
+    local left=$(( DEADLINE - $(date +%s) ))
+    if [ "$left" -le 30 ]; then say "run $name SKIPPED: deadline"; echo '{"skipped":"deadline"}' > "runs/$name/skipped.json"; phase "run-$name" "$t" 124; return; fi
+    TO=(timeout -k 20 "$left")
+  fi
+  "${TO[@]}" env PATH="$RD/prime-rl/.venv/bin:$PATH" DRUMS_RECORD="$RD/runs/$name/record.jsonl" "$RD/prime-rl/.venv/bin/eval" drums-verifiers \
     -m "$MODEL" --client.base-url "$URL" --client.api-key-var "$KEYVAR" --no-monitors.prime --output-dir "$RD/runs/$name/out" \
     --env.taskset.task.tools.style "$STYLE" --env.agent.max-turns "$TURNS" "$@" "${EXTRA[@]}" > "runs/$name/eval.log" 2>&1
-  local rc=$?; phase "run-$name" "$t" "$rc"; say "run $name rc=$rc"
+  local rc=$?; phase "run-$name" "$t" "$rc"; say "run $name rc=$rc$([ "$rc" = 124 ] && echo ' (killed at the deadline: partial)')"
 }
 run A-single -n "$N" -r "$R" -c "$((N * R))" --env.taskset.task-ids "$SEL"
 run B-fork -n "$N" -r 1 -c "$N" --env.taskset.task-ids "$SEL" --env.fork-n "$FORK" --env.settle-s 3
