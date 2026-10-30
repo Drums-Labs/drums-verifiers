@@ -61,7 +61,10 @@ def run_summary(name):
         im = images(t, raw)
         save_screens(name, t, raw)
         tool_calls = sum(len((n.get("message") or {}).get("tool_calls") or []) for n in t.get("nodes", []))
-        shots.append({"env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
+        usage = [((c.get("usage") or {}).get("prompt_tokens") or 0) for c in t.get("calls", [])]
+        shots.append({"max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
+                      "finish_reasons": dict(collections.Counter(c.get("finish_reason") for c in t.get("calls", []))),
+                      "env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
                       "tool_images": sum(1 for r, _, _ in im if r == "tool"), "tool_calls": tool_calls,
                       "distinct_images": len({h for _, h, _ in im}), "ok": t.get("ok"), "dropped": t.get("dropped")})
     s = {"traces_recorded": len(rec), "traces_in_prime_rl_stream": len(tr),
@@ -72,7 +75,8 @@ def run_summary(name):
          "rewards": dict(collections.Counter(str(r.get("reward")) for r in rec if not r.get("fork_child_failed"))),
          "drop_reasons": dict(collections.Counter(r["dropped"] for r in rec if r.get("dropped"))),
          "errors": dict(collections.Counter((r.get("errors") or ["?"])[0][:160] for r in rec if r.get("ok") is False)),
-         "by_task": {}, "screenshots": shots}
+         "by_task": {}, "screenshots": shots,
+         "max_prompt_tokens_server": max((x["max_prompt_tokens_server"] for x in shots), default=0)}
     for r in rec:
         k = s["by_task"].setdefault((r.get("task") or "?")[:8], {"n": 0, "reward_sum": 0.0, "valid": 0})
         k["n"] += 1
@@ -109,11 +113,18 @@ phases = [json.loads(l) for l in open(os.path.join(RD, "phases.jsonl"))] if os.p
 cut = [p["phase"] for p in phases if p["phase"].startswith("run-") and p.get("rc") == 124]
 verdict = {"pass": all(checks.values()) and not cut, "partial_at_deadline": cut, "checks": checks}
 out = {"verdict": verdict, "runs": runs}
+if os.path.exists(os.path.join(RD, "settings.json")):
+    out["settings"] = json.load(open(os.path.join(RD, "settings.json")))
+mock = os.path.join(RD, "mock_calls.jsonl")
+if os.path.exists(mock):
+    rows = [json.loads(l) for l in open(mock)]
+    out["prompt_window"] = {"requests": len(rows), "max_images": max((r.get("images", 0) for r in rows), default=0),
+                            "max_prompt_tokens_est": max((r.get("prompt_tokens_est", 0) for r in rows), default=0)}
 for f in ("versions.txt", "phases.jsonl", "host.txt"):
     p = os.path.join(RD, f)
     if os.path.exists(p):
         out[f] = open(p).read()
 json.dump(out, open(os.path.join(RD, "summary.json"), "w"), indent=1, default=str)
-print(json.dumps(verdict, indent=1))
+print(json.dumps({**verdict, "settings": out.get("settings"), "prompt_window": out.get("prompt_window")}, indent=1))
 for name, s in runs.items():
     print(name, {k: s[k] for k in ("traces_recorded", "valid_rewarded", "dropped", "errored", "rewards", "drop_reasons", "fork_groups")})

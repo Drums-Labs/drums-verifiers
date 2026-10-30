@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # remote.sh: the host side of acceptance.sh (run by it over ssh; not meant to be run by hand).
-#   remote.sh RD SKIP_INSTALL RELEASE_TAR ADAPTER_COMMIT MODEL_URL MODEL KEYVAR N FORK R STYLE TURNS INSTALL_ONLY DEADLINE [extra]
+#   remote.sh RD SKIP_INSTALL RELEASE_TAR ADAPTER_COMMIT MODEL_URL MODEL KEYVAR N FORK R STYLE TURNS INSTALL_ONLY DEADLINE KEEP TEMP MAXTOK PAUSE [extra]
 set -uo pipefail
-RD=$1 SKIP=$2 REL=$3 ADAPTER_C=$4 URL=$5 MODEL=$6 KEYVAR=$7 N=$8 FORK=$9 R=${10} STYLE=${11} TURNS=${12} ONLY=${13} DEADLINE=${14}; shift 14
+RD=$1 SKIP=$2 REL=$3 ADAPTER_C=$4 URL=$5 MODEL=$6 KEYVAR=$7 N=$8 FORK=$9 R=${10} STYLE=${11} TURNS=${12} ONLY=${13} DEADLINE=${14} KEEP=${15} TEMP=${16} MAXTOK=${17} PAUSE=${18}; shift 18
 EXTRA=(); for a in "$@"; do [ -n "$a" ] && EXTRA+=("$a"); done
 PRIME_RL_COMMIT=a566e5d8e2a903f44d901e114d5d510888b93303     # verifiers 60290d43 is its deps/verifiers submodule
 TASKS=(e0df059f-28a6-4169-924f-b9623e7184cc 035f41ba-6653-43ab-aa63-c86d449d62e5 2ad9387a-65d8-4e33-ad5b-7580065a27ca
@@ -68,6 +68,10 @@ c = s.client(); print(json.dumps({"health": c.health(), "metrics": c.metrics()},
 EOF
 
 # 4. the runs, through prime-rl's own eval entrypoint
+python3 -c "import json,sys; json.dump(dict(zip(sys.argv[1::2], sys.argv[2::2])), open('settings.json','w'), indent=1)" \
+  model_url "$URL" model "$MODEL" tasks "$N" fork "$FORK" rollouts "$R" tool_style "$STYLE" max_turns "$TURNS" \
+  harness drums-chat images_to_keep "$KEEP" temperature "$TEMP" max_tokens "$MAXTOK" pause_s "$PAUSE" deadline_epoch "$DEADLINE" \
+  extra "${EXTRA[*]:-}"
 SEL=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1:]))" "${TASKS[@]:0:$N}")
 run() { # run NAME [eval args...]
   local name=$1; shift; local t; t=$(date +%s); say "run $name"
@@ -80,7 +84,8 @@ run() { # run NAME [eval args...]
   fi
   "${TO[@]}" env PATH="$RD/prime-rl/.venv/bin:$PATH" DRUMS_RECORD="$RD/runs/$name/record.jsonl" "$RD/prime-rl/.venv/bin/eval" drums-verifiers \
     -m "$MODEL" --client.base-url "$URL" --client.api-key-var "$KEYVAR" --no-monitors.prime --output-dir "$RD/runs/$name/out" \
-    --env.taskset.task.tools.style "$STYLE" --env.agent.max-turns "$TURNS" "$@" "${EXTRA[@]}" > "runs/$name/eval.log" 2>&1
+    --env.taskset.task.tools.style "$STYLE" --env.agent.max-turns "$TURNS" --env.agent.harness.images-to-keep "$KEEP" \
+    --env.taskset.task.tools.pause-s "$PAUSE" --sampling.temperature "$TEMP" --sampling.max-tokens "$MAXTOK" "$@" "${EXTRA[@]}" > "runs/$name/eval.log" 2>&1
   local rc=$?; phase "run-$name" "$t" "$rc"; say "run $name rc=$rc$([ "$rc" = 124 ] && echo ' (killed at the deadline: partial)')"
 }
 run A-single -n "$N" -r "$R" -c "$((N * R))" --env.taskset.task-ids "$SEL"

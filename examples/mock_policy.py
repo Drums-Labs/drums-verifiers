@@ -6,6 +6,7 @@ Tool style: Drums' computer_* tools, or the ScaleCUA single `computer` tool when
 Plans (chosen round-robin per new conversation, written into the first reply as "plan=<name>" so later turns follow it):
   solve-e0df   the e0df059f rename, by GUI: click the folder icon, F2, ctrl+a, type the new name, Enter
   probe        screenshot, a seeded mouse move and click, Escape
+  long         15 mouse moves (a 15-turn episode, for the context-window check)
   crash        types the marker CRASH (the test fake drumsd answers it with a guest error: an infrastructure failure)
   quarantine   types the marker QUARANTINE (the test fake drumsd quarantines the env: a gate failure mid-episode)
 then a final reply without a tool call (the harness ends the rollout).
@@ -33,6 +34,8 @@ def plan_steps(name, icon, rnd):
         return [("computer_click", {"x": x, "y": y}), ("computer_key", {"keys": "f2"}), ("computer_key", {"keys": "ctrl+a"}),
                 ("computer_type_text", {"text": "todo_list_Jan_2"}), ("computer_key", {"keys": "enter"}),
                 ("computer_screenshot", {})]
+    if name == "long":
+        return [("computer_move", {"x": 100 + 40 * k, "y": 300}) for k in range(15)]
     if name in ("crash", "quarantine"):
         return [("computer_type_text", {"text": name.upper()}), ("computer_screenshot", {})]
     x, y = rnd.randint(300, 900), rnd.randint(200, 500)
@@ -53,6 +56,24 @@ def to_scalecua(name, args, obs=(1280, 720)):
     if name == "computer_type_text":
         return {"action": "type", "text": args["text"]}
     return {"action": "screenshot"}
+
+
+IMAGE_TOKENS = 1300   # conservative per 1280x720 image for Qwen-VL-family encoders (about 1,200 at 28-px merged patches)
+
+
+def prompt_estimate(body):
+    """Images in the request and a conservative prompt-token estimate: text (messages + tool schema) / 3 chars per token
+    + IMAGE_TOKENS per image."""
+    images, chars = 0, len(json.dumps(body.get("tools") or []))
+    for m in body.get("messages") or []:
+        c = m.get("content")
+        for p in c if isinstance(c, list) else [{"type": "text", "text": c or ""}]:
+            if p.get("type") == "image_url":
+                images += 1
+            else:
+                chars += len(str(p.get("text") or ""))
+        chars += len(json.dumps(m.get("tool_calls") or []))
+    return {"images": images, "prompt_tokens_est": chars // 3 + images * IMAGE_TOKENS}
 
 
 class Policy:
@@ -95,7 +116,7 @@ class Policy:
         if self.log:
             with self.lock, open(self.log, "a") as f:
                 f.write(json.dumps({"t": time.time(), "plan": plan, "seed": seed, "turn": i, "n_messages": len(msgs),
-                                    "tools": len(body.get("tools") or []), "reply": msg}) + "\n")
+                                    "tools": len(body.get("tools") or []), **prompt_estimate(body), "reply": msg}) + "\n")
         return {"id": "chatcmpl-" + uuid.uuid4().hex[:16], "object": "chat.completion", "created": int(time.time()),
                 "model": body.get("model", "mock"),
                 "choices": [{"index": 0, "message": msg, "finish_reason": finish}],

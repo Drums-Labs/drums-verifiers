@@ -22,4 +22,4 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/drums_verifiers"]
+packages = ["src/drums_verifiers", "src/drums_chat"]

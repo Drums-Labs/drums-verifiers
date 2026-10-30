@@ -168,7 +168,8 @@ class DrumsTaskset(vf.Taskset[DrumsTask, DrumsTasksetConfig]):
 
 
 class DrumsEnvConfig(vf.EnvConfig):
-    agent: vf.AgentConfig = vf.AgentConfig(harness={"id": "null"}, runtime={"type": "subprocess"})
+    agent: vf.AgentConfig = vf.AgentConfig(harness={"id": "drums-chat", "images_to_keep": 5}, runtime={"type": "subprocess"})
+    """drums-chat = verifiers' null chat loop plus the scalecua_rl visual-context window (drums_chat/__init__.py)."""
     fork_n: int = Field(0, ge=0)
     """0: one env per episode. N > 0: one parent env, `prefix`, then N forked children, one agent each (a GRPO group)."""
     prefix: list[str | dict] = Field(default_factory=list)
