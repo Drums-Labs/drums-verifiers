@@ -136,3 +136,17 @@ def test_turn_cap_never_runs_an_unrecorded_action(servers):
     results = {n["message"].get("tool_call_id") for n in t["nodes"] if n["message"].get("role") == "tool"
                and any(p.get("type") == "image_url" for p in (n["message"].get("content") or []) if isinstance(p, dict))}
     assert len(results) == r["actions"] == 5
+
+
+def test_env_that_never_starts_is_recorded_as_a_failed_episode(servers):
+    """A restore that crashes before any desktop exists (no agent, no trace) must still leave a record row, so the episode
+    is counted as failed instead of silently missing (found in the soak: one crashed create left no row)."""
+    d, dp, mp, cpq = servers
+    rec = d / "nostart.jsonl"
+    env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
+    subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
+                    "--client.api-key-var", "MOCK_KEY", "-o", str(d / "nostart"), "--env.taskset.task-ids",
+                    '["fa11ed00-0000-4000-8000-000000000000"]'], env=env, capture_output=True, text=True, timeout=600)
+    rows = [json.loads(l) for l in open(rec)]
+    assert len(rows) == 1 and rows[0]["env_create_failed"] and rows[0]["ok"] is False and rows[0]["reward"] is None
+    assert "restore failed" in rows[0]["error"]

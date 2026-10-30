@@ -252,9 +252,18 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         made = []
         try:
             t0 = time.monotonic()
-            parent = await asyncio.to_thread(c.create, task.data.drums_image, osw)
-            made.append(parent)
-            await asyncio.to_thread(parent.wait_valid)
+            try:
+                parent = await asyncio.to_thread(c.create, task.data.drums_image, osw)
+                made.append(parent)
+                await asyncio.to_thread(parent.wait_valid)
+            except Exception as e:
+                # no desktop, so no agent and no trace: record the failed episode so it is counted, then fail it
+                self._record({"t": time.time(), "episode_id": episode_id, "task": osw.get("id"),
+                              "env": made[0].id if made else getattr(e, "env_id", None), "env_create_failed": True,
+                              "error": f"{type(e).__name__}: {e}"[:500], "reward": None, "ok": False,
+                              "errors": [f"{type(e).__name__}: {str(e)[:300]}"],
+                              "mode": "fork" if self.config.fork_n else "single"})
+                raise
             ready_s = time.monotonic() - t0
             if not self.config.fork_n:
                 await self._play(task, agents, parent, None, episode_id, {"mode": "single", "ready_s": round(ready_s, 3)})

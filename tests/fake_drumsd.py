@@ -4,6 +4,7 @@
   a fork after a prefix with KILL_CHILDREN -> every child's verdict is invalid (the renderer-exit case of the SDK v0 report)
   an action containing CRASH             -> HTTP 502 (guest error)
   an action containing QUARANTINE        -> the env is quarantined (invalid) and the step gets HTTP 409, as drumsd does
+  creating an env for task fa11ed00-...  -> HTTP 500 restore failure (the crashed-restore case: no desktop at all)
     python fake_drumsd.py PORT TOKEN"""
 from __future__ import annotations
 
@@ -23,7 +24,9 @@ def _png(w=1920, h=1080):
     return b.getvalue()
 
 
+FAIL_TASK = "fa11ed00-0000-4000-8000-000000000000"
 TASKS = {
+    FAIL_TASK: {"id": FAIL_TASK, "instruction": "never starts", "config": [], "evaluator": {"func": "fake", "expected": "x"}},
     "e0df059f-28a6-4169-924f-b9623e7184cc": {"id": "e0df059f-28a6-4169-924f-b9623e7184cc",
                                              "instruction": "Rename the folder todo_list_Jan_1 to todo_list_Jan_2.",
                                              "config": [], "evaluator": {"func": "fake", "expected": "todo_list_Jan_2"}},
@@ -121,6 +124,8 @@ def make_handler(token):
             S.calls.append(("POST", self.path, json.dumps(body)[:200]))
             with S.lock:
                 if p == ["v1", "slots"]:
+                    if (body.get("task") or {}).get("id") == FAIL_TASK:
+                        return self._send(500, {"error": "criu restore failed (exit None)", "class": "restore_failed"})
                     ck = body.get("checkpoint")
                     if ck in S.ck:
                         base, inv, task = S.ck[ck]
