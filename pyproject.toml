@@ -1,0 +1,25 @@
+[project]
+name = "drums-verifiers"
+version = "0.1.0"
+description = "Drums computer-use environments (isolated desktops, OSWorld tasks, gate-checked rewards) for verifiers and prime-rl."
+requires-python = ">=3.11"
+dependencies = [
+    # verifiers v1 as pinned by prime-rl a566e5d8 (deps/verifiers submodule)
+    "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers@60290d436fcb4c2ad6dd7d0986bcf00ff2366031",
+    "pillow>=10",
+    # the Drums SDK (`drums` 0.2, standard library only) ships with drumsd: pip install <drumsd>/python
+    "drums>=0.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/drums_verifiers"]
