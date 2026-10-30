@@ -274,6 +274,7 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         episode_id = uuid.uuid4().hex[:12]
         osw = task.data.osworld
         made = []
+        failed_ids: list = []     # envs drumsd created that never came up (a failed create, failed fork children): closed too
         waits: list = []
         stage = "create"
         try:
@@ -300,6 +301,7 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                 kids = await self._admitted(parent.fork, self.config.fork_n, waits=waits)
             except drums.ForkError as e:        # usable children still play; the failed ones are recorded, never scored
                 kids, failed = e.ok, e.failed
+                failed_ids.extend(i for i in (getattr(f, "env_id", None) for f in failed) if i)
             fork_s = time.monotonic() - t1
             made.extend(kids)
             for i, f in enumerate(failed):
@@ -325,6 +327,9 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                      "fork_s": round(fork_s, 3), "ready_s": round(ready_s, 3)}
             await asyncio.gather(*[self._play(task, agents, k, parent.id, episode_id, extra) for k in kids])
         except Exception as e:
+            fid = getattr(e, "env_id", None)
+            if fid and fid not in {x.id for x in made}:
+                failed_ids.append(fid)
             # an episode that ends before any trace was scored (no desktop, refused fork, ...) still gets one record row,
             # so it is counted as failed instead of silently missing; prime-rl records it as an errored episode
             if not getattr(self, "_rows", {}).get(episode_id):
@@ -339,6 +344,12 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
             for e in made:
                 try:
                     await asyncio.to_thread(e.close)
+                except Exception:  # noqa: BLE001
+                    pass
+            tc = self.taskset.config
+            for fid in failed_ids:      # a down env left by a failed restore stays in drumsd's live list until closed
+                try:
+                    await asyncio.to_thread(lambda i=fid: sdk.env(i, tc.url, tc.token_file).close())
                 except Exception:  # noqa: BLE001
                     pass
             for st in states:

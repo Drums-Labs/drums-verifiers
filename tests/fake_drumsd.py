@@ -4,7 +4,7 @@
   a fork after a prefix with KILL_CHILDREN -> every child's verdict is invalid (the renderer-exit case of the SDK v0 report)
   an action containing CRASH             -> HTTP 502 (guest error)
   an action containing QUARANTINE        -> the env is quarantined (invalid) and the step gets HTTP 409, as drumsd does
-  creating an env for task fa11ed00-...  -> HTTP 500 restore failure (the crashed-restore case: no desktop at all)
+  creating an env for task fa11ed00-...  -> the slot comes back down (restore failed: the crashed-restore case)
   a fork after a prefix with OVERLOAD_TWICE -> the first two fork requests of that env get HTTP 429 overloaded (memory
                                          admission, nothing started), the third succeeds; OVERLOAD_ALWAYS -> always 429
     python fake_drumsd.py PORT TOKEN"""
@@ -126,8 +126,10 @@ def make_handler(token):
             S.calls.append(("POST", self.path, json.dumps(body)[:200]))
             with S.lock:
                 if p == ["v1", "slots"]:
-                    if (body.get("task") or {}).get("id") == FAIL_TASK:
-                        return self._send(500, {"error": "criu restore failed (exit None)", "class": "restore_failed"})
+                    if (body.get("task") or {}).get("id") == FAIL_TASK:     # as drumsd: the slot exists, down, with the reason
+                        e = S.new(body.get("checkpoint"), body.get("task"))
+                        e["state"], e["reason"] = "down", "criu restore failed (exit None)"
+                        return self._send(200, S.rec(e))
                     ck = body.get("checkpoint")
                     if ck in S.ck:
                         base, inv, task = S.ck[ck]

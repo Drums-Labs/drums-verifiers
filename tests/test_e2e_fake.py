@@ -150,6 +150,10 @@ def test_env_that_never_starts_is_recorded_as_a_failed_episode(servers):
     rows = [json.loads(l) for l in open(rec)]
     assert len(rows) == 1 and rows[0]["env_create_failed"] and rows[0]["ok"] is False and rows[0]["reward"] is None
     assert "restore failed" in rows[0]["error"]
+    from drums_verifiers import sdk                                 # the down env is closed, not left in the live list
+    sdk.client.cache_clear()
+    rec_env = sdk.env(rows[0]["env"], f"http://127.0.0.1:{dp}", str(d / "tok")).record
+    assert rows[0]["env"] and rec_env["state"] == "destroyed", rec_env
 
 
 def test_fork_refused_by_admission_waits_and_retries(servers):
