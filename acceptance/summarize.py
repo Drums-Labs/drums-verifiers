@@ -66,9 +66,14 @@ def run_summary(name):
         shot_ids = {(n.get("message") or {}).get("tool_call_id") for n in t.get("nodes", [])
                     if (n.get("message") or {}).get("role") == "tool" and isinstance((n.get("message") or {}).get("content"), list)
                     and any(isinstance(p, dict) and p.get("type") == "image_url" for p in n["message"]["content"])}
+        # a run stopped by the turn cap ends on a tool call that was never executed (no result at all); that one is not
+        # owed a screenshot. Every executed call (one with a tool result) must carry one.
+        answered = {(n.get("message") or {}).get("tool_call_id") for n in t.get("nodes", []) if (n.get("message") or {}).get("role") == "tool"}
+        if t.get("stop_condition") == "max_turns":
+            call_ids &= answered
         tool_calls = len(call_ids)
         usage = [((c.get("usage") or {}).get("prompt_tokens") or 0) for c in t.get("calls", [])]
-        shots.append({"max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
+        shots.append({"stop": t.get("stop_condition"), "max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
                       "finish_reasons": dict(collections.Counter(c.get("finish_reason") for c in t.get("calls", []))),
                       "env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
                       "tool_images": len(call_ids & shot_ids), "tool_calls": tool_calls,
