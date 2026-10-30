@@ -53,12 +53,19 @@ class DrumsTaskData(vf.TaskData):
     drums_env_id: str | None = None
     """Set by DrumsEnv on the copy of the task each agent runs (the rollout's env); never set in the taskset."""
     drums_episode: int | None = None
+    drums_steps: int | None = None
+    """The env's lifetime step count when DrumsEnv handed it to the agent (the reuse guard compares it)."""
     drums_parent: str | None = None
 
 
 class DrumsTaskConfig(vf.TaskConfig):
     tools: ComputerConfig = ComputerConfig()
     verify_timeout_s: float = 600.0
+
+
+def step_count(env) -> int:
+    """Lifetime number of steps drumsd ran on this env (its per-op metrics)."""
+    return int((((env.metrics().get("usage") or {}).get("ops") or {}).get("step") or {}).get("n") or 0)
 
 
 class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
@@ -75,8 +82,6 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
         (An agent-level retry would otherwise continue on a desktop a failed attempt already changed.)"""
         if not self.data.drums_env_id:
             raise RuntimeError("no Drums env: run this taskset with its DrumsEnv (the package's exported env)")
-        if trace.info.get("drums_setup_done"):
-            raise RuntimeError("this Drums env was already used by an earlier attempt; not reusing it")
         cfg = self.config.tools
 
         def check():
@@ -85,11 +90,11 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
             if rec.get("state") != "ready" or rec.get("episode") != self.data.drums_episode:
                 raise RuntimeError(f"env {env.id} is {rec.get('state')} at episode {rec.get('episode')}, "
                                    f"prepared at episode {self.data.drums_episode}")
-            used = (env.metrics().get("episode") or {}).get("steps")
-            return used
-        used = await asyncio.to_thread(check)
-        trace.info["drums_setup_done"] = True
-        trace.info["drums_steps_before_agent"] = used
+            steps = step_count(env)
+            if steps != self.data.drums_steps:
+                raise RuntimeError(f"env {env.id} took {steps - (self.data.drums_steps or 0)} actions since it was prepared "
+                                   "(an earlier attempt used it); not reusing it")
+        await asyncio.to_thread(check)
 
     @vf.stop
     def env_failed(self, trace: vf.Trace) -> bool:
@@ -185,7 +190,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         tools = task.config.tools
         obs = (tools.obs_width, tools.obs_height)
         png = await asyncio.to_thread(env.screenshot)
-        child = task.with_data(
+        steps0 = await asyncio.to_thread(step_count, env)
+        child = task.with_data(drums_steps=steps0,
             prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs),
             system_prompt=SYSTEM_PROMPT.format(w=obs[0], h=obs[1]),
             drums_env_id=env.id, drums_episode=env.record.get("episode"), drums_parent=parent)

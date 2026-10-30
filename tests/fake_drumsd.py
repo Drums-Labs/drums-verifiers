@@ -95,7 +95,7 @@ def make_handler(token):
                 if p[3] == "gates":
                     return self._send(200, {"episode": e["episode"], "validity": S.rec(e)["validity"]})
                 if p[3] == "metrics":
-                    return self._send(200, {"episode": {"steps": e["steps"]}})
+                    return self._send(200, {"episode": e["episode"], "usage": {"ops": {"step": {"n": e["steps"]}}}})
             self._send(404, {"error": "route"})
 
         def do_DELETE(self):
@@ -132,7 +132,7 @@ def make_handler(token):
                     return self._send(404, {"error": "no env"})
                 op = p[3]
                 if op == "reset":
-                    e["actions"], e["episode"], e["steps"] = list(e["base"]), e["episode"] + 1, 0
+                    e["actions"], e["episode"] = list(e["base"]), e["episode"] + 1
                     return self._send(200, S.rec(e))
                 if op == "step":
                     a = body["action"]

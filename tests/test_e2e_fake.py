@@ -78,3 +78,23 @@ def test_env_failure_mid_episode_is_an_error_not_a_reward(servers):
     r = rows[0]
     assert r["ok"] is False and r["reward"] is None and r["valid"] is None
     assert any("Drums env failed" in e for e in r["errors"]) and r["stop"] == "env_failed"
+
+
+def test_reuse_guard_refuses_an_env_that_was_already_acted_on(servers, monkeypatch):
+    import asyncio
+
+    import drums
+    from drums_verifiers import sdk
+    from drums_verifiers.taskset import DrumsTask, DrumsTaskData, step_count
+    d, dp, *_ = servers
+    monkeypatch.setenv("DRUMS_URL", f"http://127.0.0.1:{dp}")
+    monkeypatch.setenv("DRUMS_TOKEN_FILE", str(d / "tok"))
+    sdk.client.cache_clear()
+    c = sdk.client()
+    env = c.create("osworld-ubuntu", c.task("e0df059f"))
+    data = DrumsTaskData(prompt=None, osworld={"id": "x"}, drums_env_id=env.id, drums_episode=1, drums_steps=step_count(env))
+    asyncio.run(DrumsTask(data).setup(trace=None))                     # untouched: accepted
+    env.step("pyautogui.press('a')")
+    with pytest.raises(RuntimeError, match="earlier attempt"):
+        asyncio.run(DrumsTask(data).setup(trace=None))
+    assert isinstance(env, drums.Env)
