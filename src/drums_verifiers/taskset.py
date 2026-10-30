@@ -57,6 +57,8 @@ class DrumsTaskData(vf.TaskData):
     drums_steps: int | None = None
     """The env's lifetime step count when DrumsEnv handed it to the agent (the reuse guard compares it)."""
     drums_parent: str | None = None
+    drums_turn_cap: int | None = None
+    """The agent's max_turns, copied by DrumsEnv: the response that would be the last allowed turn may not run actions."""
 
 
 class DrumsTaskConfig(vf.TaskConfig):
@@ -101,6 +103,15 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
         quarantined = await asyncio.to_thread(check)
         if quarantined:                      # a gate failed already: the stop hook ends the rollout before any model call,
             trace.state.quarantined = quarantined   # and the reward drops it (invalid, not an error)
+
+    @vf.stop
+    def turn_cap(self, response: vf.Response, trace: vf.Trace) -> bool:
+        """At the turn cap verifiers refuses the NEXT model call, after the harness already ran the last response's tool
+        calls; their results would never reach the trace while their effect on the desktop is scored. So the response
+        that is the last allowed turn ends the rollout here, before the harness sees it: its tool calls are not executed.
+        (Found in the real-model acceptance: 6 Calc traces ran a 15th action whose screenshot was never recorded.)"""
+        cap = self.data.drums_turn_cap
+        return bool(cap and response.message.tool_calls and trace.num_turns + 1 >= cap)
 
     @vf.stop
     def env_failed(self, trace: vf.Trace) -> bool:
@@ -218,7 +229,7 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         obs = (tools.obs_width, tools.obs_height)
         png = await asyncio.to_thread(env.screenshot)
         steps0 = await asyncio.to_thread(step_count, env)
-        child = task.with_data(drums_steps=steps0,
+        child = task.with_data(drums_steps=steps0, drums_turn_cap=self.config.agent.max_turns,
             prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs, tools.style),
             system_prompt=(S.build_system_prompt() if tools.style == "scalecua" else SYSTEM_PROMPT.format(w=obs[0], h=obs[1])),
             drums_env_id=env.id, drums_episode=env.record.get("episode"), drums_parent=parent)

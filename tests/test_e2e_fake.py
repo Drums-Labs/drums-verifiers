@@ -30,19 +30,20 @@ def servers(tmp_path_factory):
     d = tmp_path_factory.mktemp("e2e")
     (d / "tok").write_text("t0k\n")
     dp, mp = free_port(), free_port()
-    cp, qp = free_port(), free_port()
+    cp, qp, lp = free_port(), free_port(), free_port()
     mock = [sys.executable, os.path.join(ROOT, "examples", "mock_policy.py")]
     procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "fake_drumsd.py"), str(dp), "t0k"]),
              subprocess.Popen(mock + ["--port", str(mp)]), subprocess.Popen(mock + ["--port", str(cp), "--plans", "crash"]),
-             subprocess.Popen(mock + ["--port", str(qp), "--plans", "quarantine"])]
+             subprocess.Popen(mock + ["--port", str(qp), "--plans", "quarantine"]),
+             subprocess.Popen(mock + ["--port", str(lp), "--plans", "long"])]
     time.sleep(1.5)
-    yield d, dp, mp, (cp, qp)
+    yield d, dp, mp, (cp, qp, lp)
     for p in procs:
         p.kill()
 
 
-def run_eval(d, dp, mp, cpq, name, *extra, crash=False, quarantine=False):
-    mp = cpq[0] if crash else cpq[1] if quarantine else mp
+def run_eval(d, dp, mp, cpq, name, *extra, crash=False, quarantine=False, long=False):
+    mp = cpq[0] if crash else cpq[1] if quarantine else cpq[2] if long else mp
     rec = d / f"{name}.jsonl"
     env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
     r = subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url",
@@ -120,3 +121,18 @@ def test_child_prefix_control_children_dropped(servers):
                     "--env.child-prefix", '["QUARANTINE = 1"]', "--env.settle-s", "0")
     assert len(rows) == 3, rows
     assert all(r["reward"] is None and (r["dropped"] or "").startswith("drums_invalid") for r in rows), [(r["ok"], r["dropped"], r["errors"], r.get("child_prefix")) for r in rows]
+
+
+def test_turn_cap_never_runs_an_unrecorded_action(servers):
+    """At max_turns the last allowed response's tool call must not run: every executed action has its tool result
+    (and screenshot) in the trace, and drumsd ran exactly those actions."""
+    import glob
+    d = servers[0]
+    rows = run_eval(*servers, "turncap", "--env.agent.max-turns", "6", "--env.taskset.task.tools.pause-s", "0", long=True)
+    r = rows[0]
+    assert r["stop"] == "turn_cap" and r["turns"] == 6 and r["actions"] == 5, r
+    ep = json.loads(open(glob.glob(str(d / "turncap" / "*" / "traces.jsonl"))[0]).readline())
+    t = ep["traces"][0]
+    results = {n["message"].get("tool_call_id") for n in t["nodes"] if n["message"].get("role") == "tool"
+               and any(p.get("type") == "image_url" for p in (n["message"].get("content") or []) if isinstance(p, dict))}
+    assert len(results) == r["actions"] == 5
