@@ -56,3 +56,16 @@ one line per scored trace: env, fork parent, verdict, failed gates, score, rewar
 `pytest tests` runs the unit tests, plus an end-to-end run of `vf-eval` against a fake drumsd (`tests/fake_drumsd.py`)
 and the mock policy. That run covers single envs, fork groups, invalid children that get dropped, and a mid-episode
 environment failure.
+
+## Acceptance (fresh host, real model)
+
+```
+acceptance/launch-host.sh                                   # SUBNET, SG, KEY in the environment; adds ssh alias drums-acceptance
+acceptance/acceptance.sh --host drums-acceptance --release drums-release-<commit>.tar.gz \
+    --model-url http://<vllm-host>:8000/v1 --tasks 4 --fork 4 --rollouts 2 --tool-style scalecua
+```
+
+This installs Drums with the release's installer, installs prime-rl (pinned) and this adapter, then runs three things through
+prime-rl's eval: single-env rollouts, fork groups, and a negative control whose children must all be dropped. It pulls back
+the records, prime-rl's trace stream, screenshots, drumsd metrics and `summary.json` (pass/fail). Use `--model-url mock` for a
+plumbing run with no model. The model endpoint must be reachable from the host and must serve tool calls.
