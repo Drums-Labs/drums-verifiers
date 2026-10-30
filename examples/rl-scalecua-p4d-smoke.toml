@@ -1,0 +1,116 @@
+# prime-rl GRPO smoke run: ScaleCUA 9B (Qwen3.5 dense VLM, SFT rev ff2508f), full-parameter updates, on Drums desktops
+# through this adapter, with fork groups. One p4d.24xlarge (8x A100 40 GB), single node. NOT a learning run: 6 steps.
+#
+# GPU layout (launcher: gpu/run-grpo-smoke.sh sets CUDA_VISIBLE_DEVICES=0,1,2,3,4,5; GPUs 6,7 keep serving the
+# OpenAI-compatible endpoint for other hosts, gpu/serve-scalecua.sh):
+#   inference  1 GPU  (prime-rl's vLLM server, /inference/v1/generate for the orchestrator), weights updated over NCCL
+#   trainer    5 GPUs (FSDP2, full parameters, fp32 master weights + AdamW, optimizer state offloaded to CPU RAM,
+#                      full activation checkpointing; vision encoder frozen, as in prime-rl's VLM examples)
+# The model path, conversion dir and output dir are set on the command line by the launcher (they are host paths):
+#   --model.name <start weights>  --trainer.model.conversion-dir <run scratch>  --output-dir <EBS dir>
+# drumsd: DRUMS_URL and DRUMS_TOKEN_FILE in the environment of `rl` (the env workers inherit them).
+#
+# Groups: env.fork_n = 4 -> each episode is one parent desktop at the task's start state, forked into 4 children, one agent
+# each; grpo with group_size = 1 takes the baseline over the episode's 4 child traces (score_group over
+# iter_trainable_traces: dropped / errored children are left out). batch_size counts SAMPLES: the drums-chat harness keeps
+# the 5 newest screenshots, so after turn 6 every model call is its own branch (one sample per call).
+max_steps = 6
+seq_len = 16384
+dashboard = false
+
+[run]
+name = "drums-scalecua-grpo-smoke"
+
+[model]
+name = "/home/ubuntu/ckpts/ScaleCUA-qwen3.5-osworld-sft"
+
+[model.vlm]
+freeze_vision_encoder = true
+
+[deployment]
+type = "single_node"
+gpus_per_node = 6
+num_infer_gpus = 1
+num_train_gpus = 5
+
+[ckpt]
+interval = 3                          # full DCP checkpoints (weights + optimizer) at steps 3 and 6
+keep_last = 1
+
+[weight_broadcast]
+type = "nccl"
+
+[trainer.model]
+attn = "flash_attention_2"            # what attn="auto" resolves to on SM80; stated explicitly
+offload = "optimizer"
+optimization_dtype = "float32"
+reduce_dtype = "float32"
+fused_lm_head_token_chunk_size = 1024
+
+[trainer.model.ac]
+mode = "full"
+
+[trainer.optim]
+lr = 1e-6
+max_norm = 1.0
+
+[trainer.scheduler]
+type = "constant"
+
+[inference]
+[inference.server]
+port = 8200
+[inference.vllm]
+dtype = "bfloat16"
+max_model_len = 32768
+gpu_memory_utilization = 0.85
+enable_prefix_caching = true
+tool_call_parser = "qwen3_coder"
+reasoning_parser = "None"
+data_parallel_rpc_port = 13355
+
+[orchestrator]
+batch_size = 48
+# prime-rl a566e5d8 points a policy-sampling orchestrator at localhost:8000 whatever inference.server.port is; port 8000
+# is the separate endpoint serving other hosts here, so the policy server's port is set explicitly (the launcher checks it)
+model.client.base_url = "http://localhost:8200/v1"
+max_staleness = 2
+
+[orchestrator.concurrency]
+initial_inflight = 3                  # episodes in flight: 3 parents + 12 fork children on the c8i.4xlarge env host
+min_inflight = 1
+max_inflight = 3
+
+[orchestrator.renderer]
+name = "qwen3.5"
+
+[orchestrator.train]
+group_size = 1
+
+[orchestrator.train.algo]
+type = "grpo"
+
+[orchestrator.train.select]
+shuffle = true
+seed = 20261031
+
+[orchestrator.train.sampling]
+temperature = 0.8                     # the lab harness's sampling for this model (acceptance, lab-scale, h2h)
+max_completion_tokens = 2048
+
+[[orchestrator.train.source]]
+name = "drums-osworld"
+env.taskset.id = "drums-verifiers"
+# the 11 OSWorld tasks the acceptance script uses (all set up valid on drumsd, 2026-10-30)
+env.taskset.task_ids = [
+  "e0df059f-28a6-4169-924f-b9623e7184cc", "035f41ba-6653-43ab-aa63-c86d449d62e5", "2ad9387a-65d8-4e33-ad5b-7580065a27ca",
+  "a4d98375-215b-4a4d-aee9-3d4370fccc41", "bedcedc4-4d72-425e-ad62-21960b11fe0d", "f9be0997-4b7c-45c5-b05c-4612b44a6118",
+  "ec4e3f68-9ea4-4c18-a5c9-69f89d1178b3", "28cc3b7e-b194-4bc9-8353-d04c0f4d56d2", "94d95f96-9699-4208-98ba-3c3119edf9c2",
+  "2cd43775-7085-45d8-89fa-9e35c0a915cf", "3ce045a0-877b-42aa-8d2c-b4a863336ab8",
+]
+env.taskset.task.tools.style = "scalecua"
+env.taskset.task.tools.pause_s = 2.0
+env.fork_n = 4
+env.settle_s = 3.0
+env.agent.max_turns = 15
+env.agent.harness.images_to_keep = 5

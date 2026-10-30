@@ -1,0 +1,20 @@
+# prime-rl's inference server (vLLM 0.32 behind prime-rl's router) serving ScaleCUA 9B as an OpenAI-compatible endpoint
+# (/v1/chat/completions with tool calls, and /inference/v1/generate) for hosts outside this one. Launcher:
+# gpu/serve-scalecua.sh (sets CUDA_VISIBLE_DEVICES and the model path). Same sampling-relevant settings as the lab's
+# earlier vLLM serve of this model: bf16, qwen3_coder tool parser, prefix caching, prompt token details.
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[vllm]
+model = "/home/ubuntu/ckpts/ScaleCUA-qwen3.5-osworld-sft"
+served_model_name = "scalecua"
+dtype = "bfloat16"
+max_model_len = 32768
+data_parallel_size = 2
+gpu_memory_utilization = 0.85
+enable_prefix_caching = true
+enable_auto_tool_choice = true
+tool_call_parser = "qwen3_coder"
+reasoning_parser = "None"
+enable_prompt_tokens_details = true
