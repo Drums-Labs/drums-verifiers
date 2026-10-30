@@ -88,6 +88,8 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
         def check():
             env = sdk.env(self.data.drums_env_id, cfg.url, cfg.token_file)
             rec = env.record
+            if rec.get("state") == "quarantined" and rec.get("episode") == self.data.drums_episode:
+                return f"quarantined before the agent started: {rec.get('reason') or rec.get('last_error')}"
             if rec.get("state") != "ready" or rec.get("episode") != self.data.drums_episode:
                 raise RuntimeError(f"env {env.id} is {rec.get('state')} at episode {rec.get('episode')}, "
                                    f"prepared at episode {self.data.drums_episode}")
@@ -95,7 +97,10 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
             if steps != self.data.drums_steps:
                 raise RuntimeError(f"env {env.id} took {steps - (self.data.drums_steps or 0)} actions since it was prepared "
                                    "(an earlier attempt used it); not reusing it")
-        await asyncio.to_thread(check)
+            return None
+        quarantined = await asyncio.to_thread(check)
+        if quarantined:                      # a gate failed already: the stop hook ends the rollout before any model call,
+            trace.state.quarantined = quarantined   # and the reward drops it (invalid, not an error)
 
     @vf.stop
     def env_failed(self, trace: vf.Trace) -> bool:
@@ -175,6 +180,9 @@ class DrumsEnvConfig(vf.EnvConfig):
     prefix: list[str | dict] = Field(default_factory=list)
     """Actions run on the parent before the fork (the reached state the group starts from): pyautogui code, or an SDK
     action dict such as {"type": "launch", "command": [...]}."""
+    child_prefix: list[str | dict] = Field(default_factory=list)
+    """Actions run on every child right after the fork, before its agent starts (e.g. a negative control that ends a
+    restored process inside the 5 s alive window). Errors are recorded; the child's verdict decides what happens."""
     settle_s: float = 3.0
     """Seconds between the last prefix action and the fork (lets exiting processes finish before the capture)."""
     record_path: str | None = None
@@ -260,7 +268,18 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                               "reward": None, "mode": "fork"})
             if not kids:
                 raise RuntimeError(f"fork({self.config.fork_n}) gave no usable child: {[str(f)[:200] for f in failed]}")
-            extra = {"mode": "fork", "fork_n": self.config.fork_n, "fork_ok": len(kids), "fork_failed": len(failed),
+            async def child_prefix(k):
+                out = []
+                for code in self.config.child_prefix:
+                    act = code if isinstance(code, dict) else {"type": "pyautogui", "code": code}
+                    try:
+                        await asyncio.to_thread(k.step, act)
+                        out.append("ok")
+                    except Exception as e:  # noqa: BLE001 - recorded; the gates judge the child
+                        out.append(f"{type(e).__name__}: {e}"[:200])
+                return out
+            cp = await asyncio.gather(*[child_prefix(k) for k in kids]) if self.config.child_prefix else []
+            extra = {"mode": "fork", "child_prefix": cp[0] if cp else None, "fork_n": self.config.fork_n, "fork_ok": len(kids), "fork_failed": len(failed),
                      "fork_s": round(fork_s, 3), "ready_s": round(ready_s, 3)}
             await asyncio.gather(*[self._play(task, agents, k, parent.id, episode_id, extra) for k in kids])
         finally:

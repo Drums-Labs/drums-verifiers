@@ -96,9 +96,12 @@ run() { # run NAME [eval args...]
 }
 run A-single -n "$N" -r "$R" -c "$((N * R))" --env.taskset.task-ids "$SEL"
 run B-fork -n "$N" -r 1 -c "$N" --env.taskset.task-ids "$SEL" --env.fork-n "$FORK" --env.settle-s 3
-CTRL='[{"type": "launch", "command": ["python3", "-c", "import time\nT = time.time() + 7\nwhile time.time() < T: time.sleep(0.2)"]}]'
+# control: the parent starts a long-lived process (captured, stable); every child ends it right after the restore, inside
+# drumsd's 5 s alive window, so every child's episode must be invalid and dropped
+CTRL_PARENT='[{"type": "launch", "command": ["sleep", "600"]}]'
+CTRL_CHILD='[{"type": "execute", "command": "pkill -x sleep", "shell": true}]'
 run C-control -n 1 -r 1 -c 1 --env.taskset.task-ids "$(python3 -c "import json,sys; print(json.dumps(sys.argv[1:2]))" "${TASKS[@]}")" \
-  --env.fork-n 2 --env.prefix "$CTRL" --env.settle-s 0
+  --env.fork-n 2 --env.prefix "$CTRL_PARENT" --env.child-prefix "$CTRL_CHILD" --env.settle-s 3
 prime-rl/.venv/bin/python - > drumsd-after.json <<'EOF'
 import json, drums_verifiers.sdk as s
 c = s.client(); print(json.dumps({"health": c.health(), "metrics": c.metrics(), "envs": [e.record for e in c.envs()]}, default=str))
