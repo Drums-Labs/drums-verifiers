@@ -158,8 +158,9 @@ class DrumsEnvConfig(vf.EnvConfig):
     agent: vf.AgentConfig = vf.AgentConfig(harness={"id": "null"}, runtime={"type": "subprocess"})
     fork_n: int = Field(0, ge=0)
     """0: one env per episode. N > 0: one parent env, `prefix`, then N forked children, one agent each (a GRPO group)."""
-    prefix: list[str] = Field(default_factory=list)
-    """pyautogui code run on the parent before the fork (the reached state the group starts from)."""
+    prefix: list[str | dict] = Field(default_factory=list)
+    """Actions run on the parent before the fork (the reached state the group starts from): pyautogui code, or an SDK
+    action dict such as {"type": "launch", "command": [...]}."""
     settle_s: float = 3.0
     """Seconds between the last prefix action and the fork (lets exiting processes finish before the capture)."""
     record_path: str | None = None
@@ -222,7 +223,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                 await self._play(task, agents, parent, None, episode_id, {"mode": "single", "ready_s": round(ready_s, 3)})
                 return
             for code in self.config.prefix:
-                await asyncio.to_thread(parent.step, {"type": "pyautogui", "code": code})
+                act = code if isinstance(code, dict) else {"type": "pyautogui", "code": code}
+                await asyncio.to_thread(parent.step, act)
             await asyncio.sleep(self.config.settle_s)
             import drums
             t1 = time.monotonic()
