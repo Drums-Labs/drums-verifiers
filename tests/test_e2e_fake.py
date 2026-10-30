@@ -150,3 +150,25 @@ def test_env_that_never_starts_is_recorded_as_a_failed_episode(servers):
     rows = [json.loads(l) for l in open(rec)]
     assert len(rows) == 1 and rows[0]["env_create_failed"] and rows[0]["ok"] is False and rows[0]["reward"] is None
     assert "restore failed" in rows[0]["error"]
+
+
+def test_fork_refused_by_admission_waits_and_retries(servers):
+    """drumsd answers 429 Overloaded (memory admission; nothing started) to a fork: the episode waits and asks again, and
+    the group still plays (found in the fresh-host mock acceptance: 4 concurrent fork episodes on a c8i.4xlarge, one fork
+    refused, the episode lost with no record row)."""
+    rows = run_eval(*servers, "overload", "--env.fork-n", "2", "--env.prefix", '["OVERLOAD_TWICE = 1"]', "--env.settle-s", "0")
+    assert len(rows) == 2 and all(r["valid"] and r["ok"] for r in rows)
+    assert [w["reason"] for w in rows[0]["admission_waits"]] == ["memory", "memory"]
+
+
+def test_fork_refused_past_the_wait_is_a_recorded_failed_episode(servers):
+    d, dp, mp, cpq = servers
+    rec = d / "overload_always.jsonl"
+    env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
+    subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
+                    "--client.api-key-var", "MOCK_KEY", "-o", str(d / "overload_always"), "--env.fork-n", "2", "--env.prefix",
+                    '["OVERLOAD_ALWAYS = 1"]', "--env.settle-s", "0", "--env.admission-wait-s", "3"],
+                   env=env, capture_output=True, text=True, timeout=600)
+    rows = [json.loads(l) for l in open(rec)]
+    assert len(rows) == 1 and rows[0]["episode_failed"] == "fork" and rows[0]["ok"] is False and rows[0]["reward"] is None
+    assert "Overloaded" in rows[0]["error"] and len(rows[0]["admission_waits"]) >= 1

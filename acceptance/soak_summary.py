@@ -33,6 +33,8 @@ for it in sorted(glob.glob(os.path.join(SOAK, "iter-*"))):
             n["valid_rewarded"] += bool(r.get("valid") and r.get("reward") is not None)
             n["dropped"] += bool(r.get("dropped")); n["errored"] += r.get("ok") is False
             n["fork_child_failed"] += bool(r.get("fork_child_failed"))
+            n["episodes_failed"] += bool(r.get("episode_failed") or r.get("env_create_failed"))
+            n["admission_waits"] += len(r.get("admission_waits") or [])
     iters.append({"iter": name, "pass": (s.get("verdict") or {}).get("pass"),
                   "failed_checks": [k for k, v in ((s.get("verdict") or {}).get("checks") or {}).items() if not v], **n})
 meta = {json.loads(l)["iter"]: json.loads(l) for l in open(os.path.join(SOAK, "iterations.jsonl"))} if os.path.exists(os.path.join(SOAK, "iterations.jsonl")) else {}
@@ -78,7 +80,7 @@ t0 = float(open(os.path.join(SOAK, "t0")).read()) if os.path.exists(os.path.join
 t_end = max((x.get("end") or 0 for x in iters), default=None)
 tot = collections.Counter()
 for x in iters:
-    for k in ("traces", "valid_rewarded", "dropped", "errored", "fork_child_failed"):
+    for k in ("traces", "valid_rewarded", "dropped", "errored", "fork_child_failed", "episodes_failed", "admission_waits"):
         tot[k] += x.get(k, 0)
 out = {"wall_minutes": round((t_end - t0) / 60, 1) if t0 and t_end else None, "iterations": len(iters),
        "iterations_passed": sum(1 for x in iters if x["pass"] is True), "totals": dict(tot),
@@ -90,4 +92,5 @@ out = {"wall_minutes": round((t_end - t0) / 60, 1) if t0 and t_end else None, "i
 json.dump(out, open(os.path.join(SOAK, "soak-summary.json"), "w"), indent=1, default=str)
 print(json.dumps({k: v for k, v in out.items() if k not in ("per_iteration", "invalid_as_valid_rows", "injector")}, indent=1, default=str))
 for x in iters:
-    print(x["iter"], {k: x.get(k) for k in ("rc", "pass", "traces", "valid_rewarded", "dropped", "errored", "fork_child_failed", "failed_checks")})
+    print(x["iter"], {k: x.get(k) for k in ("rc", "pass", "traces", "valid_rewarded", "dropped", "errored", "fork_child_failed",
+                                             "episodes_failed", "admission_waits", "failed_checks")})

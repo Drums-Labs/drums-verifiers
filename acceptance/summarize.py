@@ -13,6 +13,19 @@ import sys
 RD = sys.argv[1]
 
 
+def episodes_of(run_dir):
+    """Every episode prime-rl recorded (ok, number of traces, first error), from the same stream."""
+    import pyzstd
+    out = []
+    for f in sorted(glob.glob(os.path.join(run_dir, "out", "*", "monitors", "file", "traces", "stream", "*.jsonl.zst"))):
+        for line in pyzstd.decompress(open(f, "rb").read()).decode().splitlines():
+            if line.strip():
+                ep = json.loads(line)
+                out.append({"ok": ep.get("ok"), "traces": len(ep.get("traces", [])),
+                            "error": ((ep.get("errors") or [{}])[0].get("message") or "")[:200] or None})
+    return out
+
+
 def traces_of(run_dir):
     """Every trace of the run from prime-rl's file monitor stream (zstd JSONL of episodes)."""
     import pyzstd
@@ -82,7 +95,12 @@ def run_summary(name):
                       "env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
                       "tool_images": len(call_ids & shot_ids), "tool_calls": tool_calls,
                       "distinct_images": len({h for _, h, _ in im}), "ok": t.get("ok"), "dropped": t.get("dropped")})
+    eps = episodes_of(d) if os.path.isdir(os.path.join(d, "out")) else []
     s = {"traces_recorded": len(rec), "traces_in_prime_rl_stream": len(tr),
+         "episodes_in_prime_rl_stream": len(eps), "episodes_with_no_trace": sum(1 for e in eps if e["traces"] == 0),
+         "episode_errors": dict(collections.Counter(e["error"] for e in eps if e["ok"] is False and e["error"])),
+         "episodes_failed_recorded": sum(1 for r in rec if r.get("episode_failed") or r.get("env_create_failed")),
+         "admission_waits": sum(len(r.get("admission_waits") or []) for r in rec),
          "valid_rewarded": sum(1 for r in rec if r.get("valid") and r.get("reward") is not None),
          "dropped": sum(1 for r in rec if r.get("dropped")), "errored": sum(1 for r in rec if r.get("ok") is False),
          "fork_children_failed": sum(1 for r in rec if r.get("fork_child_failed")),
@@ -117,6 +135,8 @@ for name, s in runs.items():
     checks[f"{name}: traces recorded"] = n > 0
     checks[f"{name}: no reward on an invalid episode"] = s["reward_on_invalid"] == 0
     checks[f"{name}: every trace valid+rewarded, dropped, or errored"] = s["valid_rewarded"] + s["dropped"] + s["errored"] + s["fork_children_failed"] == n
+    checks[f"{name}: every episode prime-rl recorded without a trace has the adapter's failed-episode row"] = \
+        s["episodes_with_no_trace"] == s["episodes_failed_recorded"]
     checks[f"{name}: every trace saw a first screenshot"] = all(x["first_user_image"] for x in s["screenshots"]) and bool(s["screenshots"])
     checks[f"{name}: a screenshot answered every tool call"] = all(x["tool_images"] >= x["tool_calls"] for x in s["screenshots"] if x["ok"] and not x["dropped"])
     checks[f"{name}: every action drumsd ran has its screenshot in the trace"] = all(
@@ -144,4 +164,5 @@ for f in ("versions.txt", "phases.jsonl", "host.txt"):
 json.dump(out, open(os.path.join(RD, "summary.json"), "w"), indent=1, default=str)
 print(json.dumps({**verdict, "settings": out.get("settings"), "prompt_window": out.get("prompt_window")}, indent=1))
 for name, s in runs.items():
-    print(name, {k: s[k] for k in ("traces_recorded", "valid_rewarded", "dropped", "errored", "rewards", "drop_reasons", "fork_groups")})
+    print(name, {k: s[k] for k in ("episodes_in_prime_rl_stream", "episodes_with_no_trace", "traces_recorded", "valid_rewarded", "dropped",
+                                   "errored", "admission_waits", "rewards", "drop_reasons", "fork_groups")})

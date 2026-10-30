@@ -199,6 +199,10 @@ class DrumsEnvConfig(vf.EnvConfig):
     record_path: str | None = None
     """Append one JSON line per scored trace (default $DRUMS_RECORD, else no record)."""
     max_concurrent_agents: int | None = Field(8, ge=1)
+    admission_wait_s: float = Field(900.0, ge=0)
+    """drumsd refuses a create or fork with HTTP 429 (`drums.Overloaded`) when the host is near its memory floor; nothing was
+    started, so the episode waits and asks again (backoff 2 s doubling to 30 s) for up to this many seconds before it fails.
+    Every wait is recorded (`admission_waits`)."""
 
 
 def _first_message(instruction: str, png: bytes, obs, style: str = "drums") -> list:
@@ -217,7 +221,27 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         tc = self.taskset.config
         return sdk.client(tc.url, tc.token_file)
 
+    async def _admitted(self, fn, *args, waits: list):
+        """fn(*args) in a thread, asked again while drumsd answers 429 Overloaded (nothing started), up to admission_wait_s."""
+        import drums
+        overloaded = getattr(drums, "Overloaded", None) or type("NoOverloadedInThisSDK", (Exception,), {})  # SDK < 0.2.3
+        t0, delay = time.monotonic(), 2.0
+        while True:
+            try:
+                return await asyncio.to_thread(fn, *args)
+            except overloaded as e:
+                if time.monotonic() - t0 + delay > self.config.admission_wait_s:
+                    raise
+                waits.append({"op": getattr(fn, "__name__", "?"), "reason": getattr(e, "reason", None), "wait_s": delay,
+                              "admission": getattr(e, "admission", None), "t": round(time.time(), 3)})
+                await asyncio.sleep(delay)
+                delay = min(30.0, delay * 2)
+
     def _record(self, row: dict) -> None:
+        eid = row.get("episode_id")
+        if eid:
+            self._rows = getattr(self, "_rows", {})
+            self._rows[eid] = self._rows.get(eid, 0) + 1
         path = self.config.record_path or os.environ.get("DRUMS_RECORD")
         if not path:
             return
@@ -250,24 +274,20 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         episode_id = uuid.uuid4().hex[:12]
         osw = task.data.osworld
         made = []
+        waits: list = []
+        stage = "create"
         try:
             t0 = time.monotonic()
-            try:
-                parent = await asyncio.to_thread(c.create, task.data.drums_image, osw)
-                made.append(parent)
-                await asyncio.to_thread(parent.wait_valid)
-            except Exception as e:
-                # no desktop, so no agent and no trace: record the failed episode so it is counted, then fail it
-                self._record({"t": time.time(), "episode_id": episode_id, "task": osw.get("id"),
-                              "env": made[0].id if made else getattr(e, "env_id", None), "env_create_failed": True,
-                              "error": f"{type(e).__name__}: {e}"[:500], "reward": None, "ok": False,
-                              "errors": [f"{type(e).__name__}: {str(e)[:300]}"],
-                              "mode": "fork" if self.config.fork_n else "single"})
-                raise
+            parent = await self._admitted(c.create, task.data.drums_image, osw, waits=waits)
+            made.append(parent)
+            await asyncio.to_thread(parent.wait_valid)
             ready_s = time.monotonic() - t0
+            stage = "play"
             if not self.config.fork_n:
-                await self._play(task, agents, parent, None, episode_id, {"mode": "single", "ready_s": round(ready_s, 3)})
+                await self._play(task, agents, parent, None, episode_id, {"mode": "single", "ready_s": round(ready_s, 3),
+                                                                           "admission_waits": waits})
                 return
+            stage = "prefix"
             for code in self.config.prefix:
                 act = code if isinstance(code, dict) else {"type": "pyautogui", "code": code}
                 await asyncio.to_thread(parent.step, act)
@@ -275,8 +295,9 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
             import drums
             t1 = time.monotonic()
             failed = []
+            stage = "fork"
             try:
-                kids = await asyncio.to_thread(parent.fork, self.config.fork_n)
+                kids = await self._admitted(parent.fork, self.config.fork_n, waits=waits)
             except drums.ForkError as e:        # usable children still play; the failed ones are recorded, never scored
                 kids, failed = e.ok, e.failed
             fork_s = time.monotonic() - t1
@@ -299,9 +320,20 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                         out.append(f"{type(e).__name__}: {e}"[:200])
                 return out
             cp = await asyncio.gather(*[child_prefix(k) for k in kids]) if self.config.child_prefix else []
-            extra = {"mode": "fork", "child_prefix": cp[0] if cp else None, "fork_n": self.config.fork_n, "fork_ok": len(kids), "fork_failed": len(failed),
+            stage = "play"
+            extra = {"mode": "fork", "admission_waits": waits, "child_prefix": cp[0] if cp else None, "fork_n": self.config.fork_n, "fork_ok": len(kids), "fork_failed": len(failed),
                      "fork_s": round(fork_s, 3), "ready_s": round(ready_s, 3)}
             await asyncio.gather(*[self._play(task, agents, k, parent.id, episode_id, extra) for k in kids])
+        except Exception as e:
+            # an episode that ends before any trace was scored (no desktop, refused fork, ...) still gets one record row,
+            # so it is counted as failed instead of silently missing; prime-rl records it as an errored episode
+            if not getattr(self, "_rows", {}).get(episode_id):
+                self._record({"t": time.time(), "episode_id": episode_id, "task": osw.get("id"),
+                              "env": made[0].id if made else getattr(e, "env_id", None), "episode_failed": stage,
+                              "env_create_failed": stage == "create", "error": f"{type(e).__name__}: {e}"[:500],
+                              "reward": None, "ok": False, "errors": [f"{type(e).__name__}: {str(e)[:300]}"],
+                              "admission_waits": waits, "mode": "fork" if self.config.fork_n else "single"})
+            raise
         finally:
             states = {str(k.from_state) for k in made[1:]}
             for e in made:

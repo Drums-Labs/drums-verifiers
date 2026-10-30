@@ -5,6 +5,8 @@
   an action containing CRASH             -> HTTP 502 (guest error)
   an action containing QUARANTINE        -> the env is quarantined (invalid) and the step gets HTTP 409, as drumsd does
   creating an env for task fa11ed00-...  -> HTTP 500 restore failure (the crashed-restore case: no desktop at all)
+  a fork after a prefix with OVERLOAD_TWICE -> the first two fork requests of that env get HTTP 429 overloaded (memory
+                                         admission, nothing started), the third succeeds; OVERLOAD_ALWAYS -> always 429
     python fake_drumsd.py PORT TOKEN"""
 from __future__ import annotations
 
@@ -170,6 +172,10 @@ def make_handler(token):
                                             "valid": not e["invalid"], "validity": rec["validity"], "checker_error": None,
                                             "gates": {}, "seconds": 0.01})
                 if op == "branch":
+                    e["fork_tries"] = e.get("fork_tries", 0) + 1
+                    if any("OVERLOAD_ALWAYS" in a for a in e["actions"]) or (any("OVERLOAD_TWICE" in a for a in e["actions"]) and e["fork_tries"] <= 2):
+                        return self._send(429, {"error": "overloaded: fork refused: 1000 MiB available", "reason": "memory",
+                                                "admission": {"available_mib": 1000, "needed_mib": 6144, "floor_mib": 4096}})
                     ck = f"ck-{e['id']}-{len(S.ck)}"
                     kill = any("KILL_CHILDREN" in a for a in e["actions"])
                     S.ck[ck] = (list(e["actions"]), e["invalid"] or kill, e["task"])
