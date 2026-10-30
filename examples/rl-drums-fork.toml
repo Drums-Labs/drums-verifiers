@@ -1,0 +1,42 @@
+# prime-rl RL on Drums with fork groups: each episode is one reached state with 8 forked children, and the 8 child traces
+# are compared with each other: grpo with group_size = 1, so the group mean is taken over the episode's children. (prime-rl
+# a566e5d8 ties hierarchical_grpo to its proposer-solver env, so it is not used here.) Single node, small VLM; adjust for your
+# cluster. Validate on any machine: `uv run rl @ rl-drums-fork.toml --dry-run`.
+# drumsd must be reachable from the env workers: DRUMS_URL and DRUMS_TOKEN_FILE in the environment.
+max_steps = 20
+seq_len = 32768
+
+[model]
+name = "Qwen/Qwen3.5-0.8B"
+
+[model.vlm]
+freeze_vision_encoder = true
+
+[orchestrator]
+batch_size = 16
+
+[orchestrator.renderer]
+name = "qwen3.5"
+
+[orchestrator.train]
+group_size = 1                       # one episode per task draw; the group is the episode's 8 forked children
+
+[orchestrator.train.algo]
+type = "grpo"
+
+[orchestrator.train.sampling]
+temperature = 1.0
+max_completion_tokens = 1024
+
+[[orchestrator.train.source]]
+name = "drums-osworld"
+env.taskset.id = "drums-verifiers"
+env.taskset.task_ids = ["e0df059f-28a6-4169-924f-b9623e7184cc"]
+env.fork_n = 8
+env.settle_s = 3.0
+env.agent.max_turns = 15
+
+[trainer.optim]
+lr = 1e-6
+
+[inference]

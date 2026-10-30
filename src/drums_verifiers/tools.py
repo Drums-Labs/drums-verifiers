@@ -9,15 +9,17 @@ score it, so the trace ends as an error that prime-rl leaves out of training. Th
 failed", never a made-up observation.
 
 Run as a module: `python -m drums_verifiers.tools` (verifiers launches it per rollout)."""
-from __future__ import annotations
 
 import asyncio
 import time
+from typing import Annotated, Literal
 
 import verifiers.v1 as vf
 from mcp.server.mcpserver import Image
+from pydantic import Field
 
 from . import actions as A
+from . import scalecua as S
 from . import sdk
 
 
@@ -33,6 +35,9 @@ class DrumsState(vf.State):
 
 
 class ComputerConfig(vf.ToolsetConfig):
+    style: Literal["drums", "scalecua"] = "drums"
+    """drums: one tool per action, pixel coordinates. scalecua: the ScaleCUA agent's single `computer` tool, prompt and
+    observation format (for ScaleCUA checkpoints)."""
     obs_width: int = 1280
     obs_height: int = 720
     pause_s: float = 1.0
@@ -41,10 +46,12 @@ class ComputerConfig(vf.ToolsetConfig):
     """drumsd URL; default $DRUMS_URL, then http://127.0.0.1:7070."""
     token_file: str | None = None
     """drumsd token file; default $DRUMS_TOKEN_FILE, then /etc/drums/token, then $DRUMS_TOKEN."""
+    relative_coordinates: bool = True
+    """scalecua style only: coordinates in 0..1000 (the ScaleCUA RL checkpoints' setting); False = screenshot pixels."""
 
 
-class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
-    TOOL_PREFIX = "computer"
+class DesktopToolset(vf.Toolset[ComputerConfig, DrumsState]):
+    """The env binding and the act -> wait -> screenshot step shared by both tool styles."""
 
     async def setup_task(self, task) -> None:
         self.env_id = getattr(task, "drums_env_id", None)
@@ -65,7 +72,7 @@ class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
     def obs(self):
         return (self.config.obs_width, self.config.obs_height)
 
-    async def _do(self, describe: str, code: str | None):
+    async def _do(self, describe: str, code: str | None, ok_text: str | None = None):
         """Run one action (or none, for screenshot/wait), then return [text, screenshot]."""
         st = self.state
         if st.infra_error or st.quarantined:
@@ -101,11 +108,16 @@ class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
         st.action_s += dt
         if code is not None:
             st.actions += 1
-        return [f"{describe}: done.", Image(data=A.observation(png, self.obs), format="png")]
+        return [ok_text or f"{describe}: done.", Image(data=A.observation(png, self.obs), format="png")]
 
     def _invalid(self, e: Exception):
         self.state.invalid_actions += 1
         return f"Invalid action: {e}"
+
+
+class ComputerToolset(DesktopToolset):
+    """Drums' own tools: one tool per action, coordinates in screenshot pixels."""
+    TOOL_PREFIX = "computer"
 
     @vf.tool
     async def screenshot(self):
@@ -174,5 +186,48 @@ class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
         return await self._do(f"wait({s})", None)
 
 
+_P = S.make_computer_tools(relative_coordinate=True)[0]["function"]["parameters"]["properties"]
+
+
+def _d(name):
+    return _P[name]["description"]
+
+
+class ScaleCuaToolset(DesktopToolset):
+    """The ScaleCUA agent's single `computer` tool (Anthropic computer-use vocabulary), its argument names, enums and
+    descriptions, and its action -> pyautogui mapping (scalecua.py, unchanged). The tool result is "Success" + screenshot."""
+    TOOL_PREFIX = None
+
+    def register(self, mcp) -> None:
+        desc = S.make_computer_tools(self.config.relative_coordinates, self.obs)[0]["function"]["description"]
+        mcp.add_tool(self._with_state(self.computer), name="computer", description=desc)
+
+    async def computer(
+        self,
+        action: Annotated[Literal[tuple(S.ACTION_ENUM)], Field(description=_d("action"))],
+        coordinate: Annotated[list[int] | None, Field(description=_d("coordinate"))] = None,
+        duration: Annotated[int | None, Field(description=_d("duration"))] = None,
+        scroll_amount: Annotated[int | None, Field(description=_d("scroll_amount"))] = None,
+        scroll_direction: Annotated[Literal["up", "down", "left", "right"] | None, Field(description=_d("scroll_direction"))] = None,
+        start_coordinate: Annotated[list[int] | None, Field(description=_d("start_coordinate"))] = None,
+        text: Annotated[str | None, Field(description=_d("text"))] = None,
+    ):
+        args = {k: v for k, v in dict(action=action, coordinate=coordinate, duration=duration, scroll_amount=scroll_amount,
+                                       scroll_direction=scroll_direction, start_coordinate=start_coordinate, text=text).items()
+                if v is not None}
+        sw, sh = self.screen or self.obs
+        try:
+            code = S.args_to_pyautogui(args, sw, sh, self.config.relative_coordinates)
+        except (ValueError, TypeError) as e:
+            return self._invalid(e)
+        if code in (S.DONE, S.FAIL, "CALL_USER"):
+            return f"{code}: no action."
+        return await self._do(f"computer({args})", code, ok_text="Success")
+
+
 if __name__ == "__main__":
-    ComputerToolset.run()
+    import json
+    import os
+    # verifiers launches `python -m drums_verifiers.tools` for both styles; the class comes from the config it passes
+    style = json.loads(os.environ.get("VF_CONFIG") or "{}").get("style", "drums")
+    (ScaleCuaToolset if style == "scalecua" else ComputerToolset).run()

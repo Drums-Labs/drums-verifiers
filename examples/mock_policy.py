@@ -2,6 +2,7 @@
 calls. It lets the whole rollout path (orchestrator -> env server -> harness -> tools -> Drums) run on CPU, with no GPU and
 no model. Not a policy: it picks a plan per conversation and plays it.
 
+Tool style: Drums' computer_* tools, or the ScaleCUA single `computer` tool when that is what the request offers.
 Plans (chosen round-robin per new conversation, written into the first reply as "plan=<name>" so later turns follow it):
   solve-e0df   the e0df059f rename, by GUI: click the folder icon, F2, ctrl+a, type the new name, Enter
   probe        screenshot, a seeded mouse move and click, Escape
@@ -39,6 +40,21 @@ def plan_steps(name, icon, rnd):
             ("computer_key", {"keys": "escape"})]
 
 
+def to_scalecua(name, args, obs=(1280, 720)):
+    """The same step as a ScaleCUA `computer` call (relative 0..1000 coordinates)."""
+    rel = lambda: [int(args["x"] * 1000 / obs[0]), int(args["y"] * 1000 / obs[1])]  # noqa: E731
+    keymap = {"f2": "F2", "enter": "Return", "escape": "Escape"}
+    if name == "computer_click":
+        return {"action": "left_click", "coordinate": rel()}
+    if name == "computer_move":
+        return {"action": "mouse_move", "coordinate": rel()}
+    if name == "computer_key":
+        return {"action": "key", "text": keymap.get(args["keys"], args["keys"])}
+    if name == "computer_type_text":
+        return {"action": "type", "text": args["text"]}
+    return {"action": "screenshot"}
+
+
 class Policy:
     def __init__(self, plans, icon, log):
         self.plans, self.icon, self.log = plans, icon, log
@@ -49,7 +65,8 @@ class Policy:
         msgs = body.get("messages") or []
         assistants = [m for m in msgs if m.get("role") == "assistant"]
         first_user = next((m for m in msgs if m.get("role") == "user"), {})
-        text = json.dumps(first_user.get("content"))[:4000]
+        c = first_user.get("content")
+        text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c or [] if isinstance(p, dict))
         if assistants:
             m = re.search(r"plan=([\w-]+) seed=(\d+)", str(assistants[0].get("content") or ""))
             plan, seed = (m.group(1), int(m.group(2))) if m else ("probe", 0)
@@ -63,8 +80,11 @@ class Policy:
         steps = plan_steps(plan, self.icon, random.Random(seed))
         i = len(assistants)
         note = f"plan={plan} seed={seed} step={i}"
+        scalecua = any(((t.get("function") or {}).get("name")) == "computer" for t in body.get("tools") or [])
         if i < len(steps):
             name, args = steps[i]
+            if scalecua:
+                name, args = "computer", to_scalecua(name, args)
             msg = {"role": "assistant", "content": note,
                    "tool_calls": [{"id": f"call_{uuid.uuid4().hex[:12]}", "type": "function",
                                    "function": {"name": name, "arguments": json.dumps(args)}}]}

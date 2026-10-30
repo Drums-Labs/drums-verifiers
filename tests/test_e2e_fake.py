@@ -107,3 +107,9 @@ def test_quarantine_mid_episode_is_dropped_not_an_error(servers):
     r = rows[0]
     assert r["ok"] is True and r["reward"] is None and r["valid"] is False and r["stop"] == "env_failed"
     assert r["dropped"].startswith("drums_invalid:invalid:alive_after_resume")
+
+
+def test_scalecua_tool_style_end_to_end(servers):
+    rows = run_eval(*servers, "scalecua", "-r", "2", "--env.taskset.task.tools.style", "scalecua")
+    assert len(rows) == 2 and all(r["valid"] and r["ok"] for r in rows)
+    assert sorted(r["reward"] for r in rows) == [0.0, 1.0]

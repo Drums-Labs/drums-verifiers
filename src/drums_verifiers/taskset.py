@@ -37,8 +37,9 @@ from pydantic import Field
 import verifiers.v1 as vf
 
 from . import actions as A
+from . import scalecua as S
 from . import sdk
-from .tools import ComputerConfig, ComputerToolset, DrumsState
+from .tools import ComputerConfig, ComputerToolset, DrumsState, ScaleCuaToolset
 
 SYSTEM_PROMPT = """You control an Ubuntu desktop through tools. Each tool performs one action and returns a screenshot.
 Coordinates are pixels of the screenshot you see ({w}x{h}); (0, 0) is the top-left corner.
@@ -75,7 +76,7 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
 
     @classmethod
     def toolsets(cls, config: DrumsTaskConfig) -> list[vf.Toolset]:
-        return [ComputerToolset(config.tools)]
+        return [(ScaleCuaToolset if config.tools.style == "scalecua" else ComputerToolset)(config.tools)]
 
     async def setup(self, trace: vf.Trace) -> None:
         """Refuse to start an agent on an env that is not exactly the one DrumsEnv prepared: same env, same episode, ready.
@@ -180,10 +181,14 @@ class DrumsEnvConfig(vf.EnvConfig):
     max_concurrent_agents: int | None = Field(8, ge=1)
 
 
-def _first_message(instruction: str, png: bytes, obs) -> list:
+def _first_message(instruction: str, png: bytes, obs, style: str = "drums") -> list:
+    url = A.data_url(A.observation(png, obs))
+    if style == "scalecua":          # the ScaleCUA agent's messages[1]: the screenshot first, then the instruction
+        return [vf.UserMessage(content=[vf.ImageUrlContentPart(image_url=vf.ImageUrlSource(url=url)),
+                                        vf.TextContentPart(text=instruction)])]
     return [vf.UserMessage(content=[
         vf.TextContentPart(text=f"Task: {instruction}"),
-        vf.ImageUrlContentPart(image_url=vf.ImageUrlSource(url=A.data_url(A.observation(png, obs)))),
+        vf.ImageUrlContentPart(image_url=vf.ImageUrlSource(url=url)),
     ])]
 
 
@@ -205,8 +210,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         png = await asyncio.to_thread(env.screenshot)
         steps0 = await asyncio.to_thread(step_count, env)
         child = task.with_data(drums_steps=steps0,
-            prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs),
-            system_prompt=SYSTEM_PROMPT.format(w=obs[0], h=obs[1]),
+            prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs, tools.style),
+            system_prompt=(S.build_system_prompt() if tools.style == "scalecua" else SYSTEM_PROMPT.format(w=obs[0], h=obs[1])),
             drums_env_id=env.id, drums_episode=env.record.get("episode"), drums_parent=parent)
         t0 = time.time()
         trace = await agents.agent.run(child)

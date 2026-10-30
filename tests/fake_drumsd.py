@@ -157,7 +157,9 @@ def make_handler(token):
                 if op == "verify":
                     t = e["task"] or {}
                     want = (t.get("evaluator") or {}).get("expected")
-                    score = 1.0 if want and any(want in a for a in e["actions"]) else 0.0
+                    import re
+                    typed = ["".join(re.findall(r"press\('(.)'\)", a)) for a in e["actions"]]   # ScaleCUA types key by key
+                    score = 1.0 if want and any(want in a for a in e["actions"] + typed) else 0.0
                     rec = S.rec(e)
                     return self._send(200, {"slot": e["id"], "episode": e["episode"], "task_id": t.get("id"), "score": score,
                                             "valid": not e["invalid"], "validity": rec["validity"], "checker_error": None,
