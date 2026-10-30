@@ -26,6 +26,9 @@ class DrumsState(vf.State):
     actions: int = 0
     invalid_actions: int = 0
     infra_error: str | None = None
+    quarantined: str | None = None
+    """drumsd quarantined the env mid-episode (a gate failed, e.g. a restored process exited within 5 s): the episode is
+    invalid, not broken; the task drops it."""
     action_s: float = 0.0
 
 
@@ -65,8 +68,8 @@ class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
     async def _do(self, describe: str, code: str | None):
         """Run one action (or none, for screenshot/wait), then return [text, screenshot]."""
         st = self.state
-        if st.infra_error:
-            return f"The environment failed earlier ({st.infra_error}); no action was taken."
+        if st.infra_error or st.quarantined:
+            return f"The environment stopped earlier ({st.infra_error or st.quarantined}); no action was taken."
         if self.env is None:
             st.infra_error = getattr(self, "bind_error", None) or "no Drums env bound to this rollout"
             return f"The environment is unavailable ({st.infra_error})."
@@ -84,9 +87,17 @@ class ComputerToolset(vf.Toolset[ComputerConfig, DrumsState]):
             return png, time.monotonic() - t0
         try:
             png, dt = await asyncio.to_thread(run)
-        except Exception as e:  # noqa: BLE001 - every env failure ends the rollout as an error
-            st.infra_error = f"{describe}: {type(e).__name__}: {e}"[:500]
-            return f"The environment failed while running {describe}; the episode is over."
+        except Exception as e:  # noqa: BLE001 - every env failure ends the rollout (dropped if quarantined, else an error)
+            rec = {}
+            try:
+                rec = await asyncio.to_thread(self.env.refresh)
+            except Exception:  # noqa: BLE001
+                pass
+            if rec.get("state") == "quarantined":
+                st.quarantined = f"{describe}: quarantined: {rec.get('reason') or rec.get('last_error') or e}"[:500]
+            else:
+                st.infra_error = f"{describe}: {type(e).__name__}: {e}"[:500]
+            return f"The environment stopped while running {describe}; the episode is over."
         st.action_s += dt
         if code is not None:
             st.actions += 1

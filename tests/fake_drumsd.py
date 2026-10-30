@@ -3,6 +3,7 @@
   an action containing INVALIDATE        -> the env's verdict becomes invalid (failed gate "alive_after_resume")
   a fork after a prefix with KILL_CHILDREN -> every child's verdict is invalid (the renderer-exit case of the SDK v0 report)
   an action containing CRASH             -> HTTP 502 (guest error)
+  an action containing QUARANTINE        -> the env is quarantined (invalid) and the step gets HTTP 409, as drumsd does
     python fake_drumsd.py PORT TOKEN"""
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ class State:
 
     def rec(self, e):
         v = "invalid" if e["invalid"] else "valid"
-        return {"id": e["id"], "state": e["state"], "episode": e["episode"], "checkpoint": e["checkpoint"],
+        return {"id": e["id"], "state": e["state"], "episode": e["episode"], "checkpoint": e["checkpoint"], "reason": e.get("reason"),
                 "task": ({"id": e["task"]["id"], "instruction": e["task"]["instruction"]} if e["task"] else None),
                 "validity": {"verdict": v, "gates": ["alive_after_resume"] if e["invalid"] else []}}
 
@@ -139,8 +140,13 @@ def make_handler(token):
                     code = a.get("code") or json.dumps(a.get("command"))
                     if "CRASH" in code:
                         return self._send(502, {"error": "guest down"})
+                    if e["state"] == "quarantined":
+                        return self._send(409, {"error": "slot is quarantined: step is not allowed (allowed from: ready)"})
                     if "INVALIDATE" in code:
                         e["invalid"] = True
+                    if "QUARANTINE" in code:
+                        e["invalid"], e["state"], e["reason"] = True, "quarantined", "alive_after_resume"
+                        return self._send(409, {"error": "slot is quarantined: step is not allowed (allowed from: ready)"})
                     e["actions"].append(code)
                     e["steps"] += 1
                     r = {"result": {"status": "success", "output": "", "error": "", "returncode": 0}, "seconds": 0.01,

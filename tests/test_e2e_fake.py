@@ -30,18 +30,19 @@ def servers(tmp_path_factory):
     d = tmp_path_factory.mktemp("e2e")
     (d / "tok").write_text("t0k\n")
     dp, mp = free_port(), free_port()
-    cp = free_port()
+    cp, qp = free_port(), free_port()
     mock = [sys.executable, os.path.join(ROOT, "examples", "mock_policy.py")]
     procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "fake_drumsd.py"), str(dp), "t0k"]),
-             subprocess.Popen(mock + ["--port", str(mp)]), subprocess.Popen(mock + ["--port", str(cp), "--plans", "crash"])]
+             subprocess.Popen(mock + ["--port", str(mp)]), subprocess.Popen(mock + ["--port", str(cp), "--plans", "crash"]),
+             subprocess.Popen(mock + ["--port", str(qp), "--plans", "quarantine"])]
     time.sleep(1.5)
-    yield d, dp, mp, cp
+    yield d, dp, mp, (cp, qp)
     for p in procs:
         p.kill()
 
 
-def run_eval(d, dp, mp, cp, name, *extra, crash=False):
-    mp = cp if crash else mp
+def run_eval(d, dp, mp, cpq, name, *extra, crash=False, quarantine=False):
+    mp = cpq[0] if crash else cpq[1] if quarantine else mp
     rec = d / f"{name}.jsonl"
     env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
     r = subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url",
@@ -98,3 +99,11 @@ def test_reuse_guard_refuses_an_env_that_was_already_acted_on(servers, monkeypat
     with pytest.raises(RuntimeError, match="earlier attempt"):
         asyncio.run(DrumsTask(data).setup(trace=None))
     assert isinstance(env, drums.Env)
+
+
+def test_quarantine_mid_episode_is_dropped_not_an_error(servers):
+    rows = run_eval(*servers, "quarantine", quarantine=True)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["ok"] is True and r["reward"] is None and r["valid"] is False and r["stop"] == "env_failed"
+    assert r["dropped"].startswith("drums_invalid:invalid:alive_after_resume")

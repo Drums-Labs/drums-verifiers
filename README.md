@@ -45,7 +45,7 @@ MOCK_KEY=x uv run eval drums-verifiers -n 1 -r 2 -m mock --client.base-url http:
 | what happened | trace | prime-rl |
 |---|---|---|
 | all gates passed, checker ran | reward = checker score (0 or 1) | trained |
-| a gate failed (isolation, mounts, network, cgroup limits, state hash, processes alive after restore) | no reward; `dropped = "drums_invalid:<verdict>:<gates>"` | skipped (`iter_trainable_traces`), left out of eval reward means |
+| a gate failed (isolation, mounts, network, cgroup limits, state hash, processes alive after restore), at the start or mid-episode (drumsd quarantines the env) | no reward; `dropped = "drums_invalid:<verdict>:<gates>"` | skipped (`iter_trainable_traces`), left out of eval reward means |
 | the checker failed, or drumsd or the desktop failed mid-episode | error (`ok = False`) | skipped |
 
 The checker's score for a flagged episode is kept in `trace.info["drums"]` for audit. Set `DRUMS_RECORD=path.jsonl` to get

@@ -99,13 +99,25 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
     @vf.stop
     def env_failed(self, trace: vf.Trace) -> bool:
         """End the rollout before the next model call once the env failed (tools.py records it)."""
-        return bool(trace.state.infra_error)
+        return bool(trace.state.infra_error or trace.state.quarantined)
 
     @vf.reward
     async def task_success(self, trace: vf.Trace) -> float | None:
         if trace.state.infra_error:
             raise RuntimeError(f"Drums env failed during the episode: {trace.state.infra_error}")
         cfg = self.config.tools
+        if trace.state.quarantined:          # a gate failed mid-episode: invalid, never scored
+            def gates():
+                return sdk.env(self.data.drums_env_id, cfg.url, cfg.token_file).gates()
+            g = await asyncio.to_thread(gates)
+            v = g.get("validity") or {}
+            trace.info["drums"] = {"env": self.data.drums_env_id, "episode": g.get("episode"), "valid": False,
+                                   "verdict": v.get("verdict"), "failed_gates": v.get("gates", []), "score": None,
+                                   "quarantined": trace.state.quarantined, "actions": trace.state.actions,
+                                   "parent": self.data.drums_parent}
+            trace.record_metric("drums_valid", 0.0)
+            trace.drop(f"drums_invalid:{v.get('verdict')}:{','.join(map(str, v.get('gates', []))) or 'quarantined'}")
+            return None
 
         def verify():
             env = sdk.env(self.data.drums_env_id, cfg.url, cfg.token_file)

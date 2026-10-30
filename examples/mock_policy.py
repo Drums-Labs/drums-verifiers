@@ -6,6 +6,7 @@ Plans (chosen round-robin per new conversation, written into the first reply as 
   solve-e0df   the e0df059f rename, by GUI: click the folder icon, F2, ctrl+a, type the new name, Enter
   probe        screenshot, a seeded mouse move and click, Escape
   crash        types the marker CRASH (the test fake drumsd answers it with a guest error: an infrastructure failure)
+  quarantine   types the marker QUARANTINE (the test fake drumsd quarantines the env: a gate failure mid-episode)
 then a final reply without a tool call (the harness ends the rollout).
 
     python mock_policy.py --port 8011 [--plans solve-e0df,probe] [--icon 1235 590] [--log calls.jsonl]
@@ -31,8 +32,8 @@ def plan_steps(name, icon, rnd):
         return [("computer_click", {"x": x, "y": y}), ("computer_key", {"keys": "f2"}), ("computer_key", {"keys": "ctrl+a"}),
                 ("computer_type_text", {"text": "todo_list_Jan_2"}), ("computer_key", {"keys": "enter"}),
                 ("computer_screenshot", {})]
-    if name == "crash":
-        return [("computer_type_text", {"text": "CRASH"}), ("computer_screenshot", {})]
+    if name in ("crash", "quarantine"):
+        return [("computer_type_text", {"text": name.upper()}), ("computer_screenshot", {})]
     x, y = rnd.randint(300, 900), rnd.randint(200, 500)
     return [("computer_screenshot", {}), ("computer_move", {"x": x, "y": y}), ("computer_click", {"x": x, "y": y}),
             ("computer_key", {"keys": "escape"})]
