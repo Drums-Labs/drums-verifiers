@@ -56,6 +56,7 @@ def run_summary(name):
     rec = [json.loads(l) for l in open(os.path.join(d, "record.jsonl"))] if os.path.exists(os.path.join(d, "record.jsonl")) else []
     tr = traces_of(d) if os.path.isdir(os.path.join(d, "out")) else []
     shots = []
+    executed = {r.get("env"): r.get("actions") for r in rec}
     for ep, t in tr:
         raw = []
         im = images(t, raw)
@@ -66,14 +67,17 @@ def run_summary(name):
         shot_ids = {(n.get("message") or {}).get("tool_call_id") for n in t.get("nodes", [])
                     if (n.get("message") or {}).get("role") == "tool" and isinstance((n.get("message") or {}).get("content"), list)
                     and any(isinstance(p, dict) and p.get("type") == "image_url" for p in n["message"]["content"])}
-        # a run stopped by the turn cap ends on a tool call that was never executed (no result at all); that one is not
-        # owed a screenshot. Every executed call (one with a tool result) must carry one.
+        # Every tool call must have its result with a screenshot. The one exception is the response stopped by the
+        # adapter's `turn_cap` hook, whose tool calls are refused before the harness runs them (verified against the
+        # actions drumsd ran: `actions_executed` below must equal the screenshots recorded). A `max_turns` stop is NOT
+        # exempt: there the harness has already run the last call, and its result never reached the trace.
         answered = {(n.get("message") or {}).get("tool_call_id") for n in t.get("nodes", []) if (n.get("message") or {}).get("role") == "tool"}
-        if t.get("stop_condition") == "max_turns":
+        if t.get("stop_condition") == "turn_cap":
             call_ids &= answered
         tool_calls = len(call_ids)
         usage = [((c.get("usage") or {}).get("prompt_tokens") or 0) for c in t.get("calls", [])]
-        shots.append({"stop": t.get("stop_condition"), "max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
+        shots.append({"actions_executed": executed.get(((t.get("info") or {}).get("drums") or {}).get("env")),
+                      "stop": t.get("stop_condition"), "max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
                       "finish_reasons": dict(collections.Counter(c.get("finish_reason") for c in t.get("calls", []))),
                       "env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
                       "tool_images": len(call_ids & shot_ids), "tool_calls": tool_calls,
@@ -115,6 +119,8 @@ for name, s in runs.items():
     checks[f"{name}: every trace valid+rewarded, dropped, or errored"] = s["valid_rewarded"] + s["dropped"] + s["errored"] + s["fork_children_failed"] == n
     checks[f"{name}: every trace saw a first screenshot"] = all(x["first_user_image"] for x in s["screenshots"]) and bool(s["screenshots"])
     checks[f"{name}: a screenshot answered every tool call"] = all(x["tool_images"] >= x["tool_calls"] for x in s["screenshots"] if x["ok"] and not x["dropped"])
+    checks[f"{name}: every action drumsd ran has its screenshot in the trace"] = all(
+        x["actions_executed"] is None or x["tool_images"] >= x["actions_executed"] for x in s["screenshots"] if x["ok"] and not x["dropped"])
 if "B-fork" in runs:
     checks["B-fork: children are distinct envs grouped under one parent each"] = bool(runs["B-fork"]["fork_groups"]) and all(v >= 1 for v in runs["B-fork"]["fork_groups"].values())
 if "C-control" in runs:
