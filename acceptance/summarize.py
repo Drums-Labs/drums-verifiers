@@ -60,12 +60,18 @@ def run_summary(name):
         raw = []
         im = images(t, raw)
         save_screens(name, t, raw)
-        tool_calls = sum(len((n.get("message") or {}).get("tool_calls") or []) for n in t.get("nodes", []))
+        # count distinct tool calls and the distinct ones whose result carried a screenshot: with the image window the
+        # trace stores each trimmed request as its own branch, so the same call appears in several nodes
+        call_ids = {c.get("id") for n in t.get("nodes", []) for c in ((n.get("message") or {}).get("tool_calls") or [])}
+        shot_ids = {(n.get("message") or {}).get("tool_call_id") for n in t.get("nodes", [])
+                    if (n.get("message") or {}).get("role") == "tool" and isinstance((n.get("message") or {}).get("content"), list)
+                    and any(isinstance(p, dict) and p.get("type") == "image_url" for p in n["message"]["content"])}
+        tool_calls = len(call_ids)
         usage = [((c.get("usage") or {}).get("prompt_tokens") or 0) for c in t.get("calls", [])]
         shots.append({"max_prompt_tokens_server": max(usage, default=0), "model_calls": len(usage),
                       "finish_reasons": dict(collections.Counter(c.get("finish_reason") for c in t.get("calls", []))),
                       "env": (t.get("info") or {}).get("drums", {}).get("env"), "first_user_image": bool(im and im[0][0] == "user"),
-                      "tool_images": sum(1 for r, _, _ in im if r == "tool"), "tool_calls": tool_calls,
+                      "tool_images": len(call_ids & shot_ids), "tool_calls": tool_calls,
                       "distinct_images": len({h for _, h, _ in im}), "ok": t.get("ok"), "dropped": t.get("dropped")})
     s = {"traces_recorded": len(rec), "traces_in_prime_rl_stream": len(tr),
          "valid_rewarded": sum(1 for r in rec if r.get("valid") and r.get("reward") is not None),
