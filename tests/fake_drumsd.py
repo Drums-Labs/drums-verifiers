@@ -5,6 +5,7 @@
   an action containing CRASH             -> HTTP 502 (guest error)
   an action containing QUARANTINE        -> the env is quarantined (invalid) and the step gets HTTP 409, as drumsd does
   creating an env for task fa11ed00-...  -> the slot comes back down (restore failed: the crashed-restore case)
+  an env whose actions contain FLAKY_DELETE -> its first DELETE gets HTTP 503 (drumsd restarting), the next one works
   a fork after a prefix with OVERLOAD_TWICE -> the first two fork requests of that env get HTTP 429 overloaded (memory
                                          admission, nothing started), the third succeeds; OVERLOAD_ALWAYS -> always 429
     python fake_drumsd.py PORT TOKEN"""
@@ -111,6 +112,9 @@ def make_handler(token):
             S.calls.append(("DELETE", self.path))
             if p[:2] == ["v1", "slots"]:
                 e = S.envs[p[2]]
+                if any("FLAKY_DELETE" in a for a in e["actions"]) and not e.get("delete_refused"):
+                    e["delete_refused"] = True              # drumsd restarting: the first DELETE finds nobody
+                    return self._send(503, {"error": "drumsd restarting"})
                 e["state"] = "destroyed"
                 return self._send(200, S.rec(e))
             if p[:2] == ["v1", "checkpoints"]:

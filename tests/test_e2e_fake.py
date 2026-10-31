@@ -176,3 +176,15 @@ def test_fork_refused_past_the_wait_is_a_recorded_failed_episode(servers):
     rows = [json.loads(l) for l in open(rec)]
     assert len(rows) == 1 and rows[0]["episode_failed"] == "fork" and rows[0]["ok"] is False and rows[0]["reward"] is None
     assert "Overloaded" in rows[0]["error"] and len(rows[0]["admission_waits"]) >= 1
+
+
+def test_close_during_a_drumsd_restart_is_retried(servers):
+    """A DELETE that finds drumsd restarting (503) is asked again, so no env is left behind (found in the real-model soak:
+    a fork group's closes fell in the 1.28 s drumsd restart after the injected SIGKILL; 3 slots and the fork state leaked)."""
+    rows = run_eval(*servers, "flakydelete", "--env.fork-n", "2", "--env.prefix", '["FLAKY_DELETE = 1"]', "--env.settle-s", "0")
+    assert len(rows) == 2 and not any(r.get("cleanup_failed") for r in rows)
+    from drums_verifiers import sdk
+    d, dp, *_ = servers
+    sdk.client.cache_clear()
+    for r in rows + [{"env": rows[0]["parent"]}]:
+        assert sdk.env(r["env"], f"http://127.0.0.1:{dp}", str(d / "tok")).record["state"] == "destroyed", r["env"]

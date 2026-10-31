@@ -28,7 +28,11 @@ for it in sorted(glob.glob(os.path.join(SOAK, "iter-*"))):
     for f in sorted(glob.glob(os.path.join(it, "runs", "*", "record.jsonl"))):
         run = os.path.basename(os.path.dirname(f))
         for line in open(f):
-            r = json.loads(line); r["_iter"] = name; r["_run"] = run; rows.append(r)
+            r = json.loads(line); r["_iter"] = name; r["_run"] = run
+            if r.get("cleanup_failed"):
+                n["cleanup_failed"] += 1
+                continue
+            rows.append(r)
             n["traces"] += 1
             n["valid_rewarded"] += bool(r.get("valid") and r.get("reward") is not None)
             n["dropped"] += bool(r.get("dropped")); n["errored"] += r.get("ok") is False
@@ -81,7 +85,7 @@ t0 = float(open(os.path.join(SOAK, "t0")).read()) if os.path.exists(os.path.join
 t_end = max((x.get("end") or 0 for x in iters), default=None)
 tot = collections.Counter()
 for x in iters:
-    for k in ("traces", "valid_rewarded", "dropped", "errored", "fork_child_failed", "episodes_failed", "admission_waits"):
+    for k in ("traces", "valid_rewarded", "dropped", "errored", "fork_child_failed", "episodes_failed", "admission_waits", "cleanup_failed"):
         tot[k] += x.get(k, 0)
 out = {"wall_minutes": round((t_end - t0) / 60, 1) if t0 and t_end else None, "iterations": len(iters),
        "iterations_passed": sum(1 for x in iters if x["pass"] is True),

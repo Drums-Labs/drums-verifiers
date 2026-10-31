@@ -67,6 +67,8 @@ def images(trace, raw=None):
 def run_summary(name):
     d = os.path.join(RD, "runs", name)
     rec = [json.loads(l) for l in open(os.path.join(d, "record.jsonl"))] if os.path.exists(os.path.join(d, "record.jsonl")) else []
+    cleanup_failed = [r for r in rec if r.get("cleanup_failed")]
+    rec = [r for r in rec if not r.get("cleanup_failed")]
     tr = traces_of(d) if os.path.isdir(os.path.join(d, "out")) else []
     shots = []
     executed = {r.get("env"): r.get("actions") for r in rec}
@@ -101,6 +103,7 @@ def run_summary(name):
          "episode_errors": dict(collections.Counter(e["error"] for e in eps if e["ok"] is False and e["error"])),
          "episodes_failed_recorded": sum(1 for r in rec if r.get("episode_failed") or r.get("env_create_failed")),
          "admission_waits": sum(len(r.get("admission_waits") or []) for r in rec),
+         "cleanup_failed": [r.get("cleanup_failed") + ": " + (r.get("error") or "")[:120] for r in cleanup_failed],
          "valid_rewarded": sum(1 for r in rec if r.get("valid") and r.get("reward") is not None),
          "dropped": sum(1 for r in rec if r.get("dropped")), "errored": sum(1 for r in rec if r.get("ok") is False),
          "fork_children_failed": sum(1 for r in rec if r.get("fork_child_failed")),
@@ -137,6 +140,7 @@ for name, s in runs.items():
     checks[f"{name}: every trace valid+rewarded, dropped, or errored"] = s["valid_rewarded"] + s["dropped"] + s["errored"] + s["fork_children_failed"] == n
     checks[f"{name}: every episode prime-rl recorded without a trace has the adapter's failed-episode row"] = \
         s["episodes_with_no_trace"] == s["episodes_failed_recorded"]
+    checks[f"{name}: every env and fork state was closed (no cleanup failed)"] = not s["cleanup_failed"]
     checks[f"{name}: every trace saw a first screenshot"] = all(x["first_user_image"] for x in s["screenshots"]) and bool(s["screenshots"])
     checks[f"{name}: a screenshot answered every tool call"] = all(x["tool_images"] >= x["tool_calls"] for x in s["screenshots"] if x["ok"] and not x["dropped"])
     checks[f"{name}: every action drumsd ran has its screenshot in the trace"] = all(

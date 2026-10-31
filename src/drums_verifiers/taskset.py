@@ -237,6 +237,32 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
                 await asyncio.sleep(delay)
                 delay = min(30.0, delay * 2)
 
+    async def _cleanup(self, what: str, fn, episode_id: str, task_id) -> None:
+        """Close an env or delete a fork state. A DELETE is not retried by the SDK, so a drumsd restart at that moment
+        (systemd brings it back in about a second) would leave the env or state behind: retry while drumsd is unreachable,
+        up to 120 s. An env already gone counts as closed. A cleanup that still fails is recorded, never silent."""
+        import drums
+        unavailable = getattr(drums, "DaemonUnavailable", ())
+        gone = getattr(drums, "NotFound", ())
+        t0, delay, err = time.monotonic(), 0.5, None
+        while True:
+            try:
+                await asyncio.to_thread(fn)
+                return
+            except gone:
+                return
+            except unavailable as e:
+                err = e
+                if time.monotonic() - t0 > 120:
+                    break
+                await asyncio.sleep(delay)
+                delay = min(10.0, delay * 2)
+            except Exception as e:  # noqa: BLE001
+                err = e
+                break
+        self._record({"t": time.time(), "episode_id": episode_id, "task": task_id, "cleanup_failed": what,
+                      "error": f"{type(err).__name__}: {err}"[:300], "reward": None})
+
     def _record(self, row: dict) -> None:
         eid = row.get("episode_id")
         if eid:
@@ -341,19 +367,11 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
             raise
         finally:
             states = {str(k.from_state) for k in made[1:]}
+            tid = osw.get("id")
             for e in made:
-                try:
-                    await asyncio.to_thread(e.close)
-                except Exception:  # noqa: BLE001
-                    pass
+                await self._cleanup(f"close {e.id}", e.close, episode_id, tid)
             tc = self.taskset.config
             for fid in failed_ids:      # a down env left by a failed restore stays in drumsd's live list until closed
-                try:
-                    await asyncio.to_thread(lambda i=fid: sdk.env(i, tc.url, tc.token_file).close())
-                except Exception:  # noqa: BLE001
-                    pass
+                await self._cleanup(f"close {fid}", lambda i=fid: sdk.env(i, tc.url, tc.token_file).close(), episode_id, tid)
             for st in states:
-                try:
-                    await asyncio.to_thread(c.delete_state, st)
-                except Exception:  # noqa: BLE001
-                    pass
+                await self._cleanup(f"delete_state {st}", lambda st=st: c.delete_state(st), episode_id, tid)
