@@ -7,7 +7,10 @@ instruction, and each later screenshot as the tool result ("Success" + image, 12
 PROVENANCE AND LICENCE. Copied from drums-lab experiments/exp3/env/scalecua_format.py, which is derived from
 THUDM/SCALE-CUA (commit 3929e2fe364623153f2caa94ead71dc1aea50fb0) osworld_eval/mm_agents/scalecua-osworld/utils.py and
 main.py, under the Apache License 2.0 (Copyright the SCALE-CUA authors). This file is distributed under the Apache
-License 2.0 with this notice. The functions below are unchanged copies.
+License 2.0 with this notice. The functions below are copies; one is MODIFIED (Apache-2.0 section 4(b)):
+  * 2026-10-31, build_system_prompt: removed the line giving the model the image's sudo password ("If you need a password for
+    sudo, the password of the computer is 'password'."). In a Drums env the desktop user has no privilege escalation, and an
+    agent is never handed a credential.
 """
 from datetime import datetime
 
@@ -23,7 +26,8 @@ ACTION_ENUM = ["key", "hold_key", "type", "cursor_position", "mouse_move", "left
 
 def build_system_prompt(today=None):
     """SYSTEM_PROMPT from osworld_eval/mm_agents/scalecua-osworld/utils.py, with the date substituted the same way
-    (`datetime.today().strftime('%A, %B %d, %Y')`). Text unchanged otherwise."""
+    (`datetime.today().strftime('%A, %B %d, %Y')`). Text unchanged otherwise, except the removed sudo-password line (see the
+    module docstring: a modification of the Apache-2.0 upstream)."""
     date = (today or datetime.today()).strftime('%A, %B %d, %Y')
     return f"""<SYSTEM_CAPABILITY>
 * You are utilising an Ubuntu virtual machine using x86_64 architecture with internet access.
@@ -42,7 +46,6 @@ def build_system_prompt(today=None):
   Then you MUST output exactly "[INFEASIBLE]" (including the square brackets) anywhere in your response to trigger the fail action. The system will automatically detect this pattern and terminate the task appropriately.
 * The current date is {date}.
 * Home directory of this Ubuntu system is '/home/user'.
-* If you need a password for sudo, the password of the computer is 'password'.
 </SYSTEM_CAPABILITY>
 
 <IMPORTANT>
