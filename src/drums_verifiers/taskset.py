@@ -39,12 +39,19 @@ import verifiers.v1 as vf
 from . import actions as A
 from . import scalecua as S
 from . import sdk
-from .tools import ComputerConfig, ComputerToolset, DrumsState, ScaleCuaToolset
+from .tools import ComputerConfig, ComputerToolset, DrumsState, HybridToolset, ScaleCuaToolset
 
 SYSTEM_PROMPT = """You control an Ubuntu desktop through tools. Each tool performs one action and returns a screenshot.
 Coordinates are pixels of the screenshot you see ({w}x{h}); (0, 0) is the top-left corner.
 Tools: computer_click, computer_move, computer_drag, computer_scroll, computer_type_text, computer_key, computer_wait,
 computer_screenshot. When the task is complete, reply with a short message and no tool call."""
+
+HYBRID_PROMPT = """You control an Ubuntu desktop through tools: GUI tools (computer_click, computer_move, computer_drag,
+computer_scroll, computer_type_text, computer_key, computer_wait, computer_screenshot; coordinates are pixels of the
+{w}x{h} screenshot) and tools that act on the same desktop without the GUI (computer_shell, computer_read_file,
+computer_write_file, computer_list_dir, computer_office_convert, computer_spreadsheet_read, computer_browser_tabs,
+computer_browser_open). Files are shared: a file the browser downloads is in ~/Downloads for the shell at once.
+When the task is complete, reply with a short message and no tool call."""
 
 
 class DrumsTaskData(vf.TaskData):
@@ -78,7 +85,8 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
 
     @classmethod
     def toolsets(cls, config: DrumsTaskConfig) -> list[vf.Toolset]:
-        return [(ScaleCuaToolset if config.tools.style == "scalecua" else ComputerToolset)(config.tools)]
+        cls_ = {"scalecua": ScaleCuaToolset, "hybrid": HybridToolset}.get(config.tools.style, ComputerToolset)
+        return [cls_(config.tools)]
 
     async def setup(self, trace: vf.Trace) -> None:
         """Refuse to start an agent on an env that is not exactly the one DrumsEnv prepared: same env, same episode, ready.
@@ -144,9 +152,13 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
         r, dt = await asyncio.wait_for(asyncio.to_thread(verify), self.config.verify_timeout_s)
         info = {"env": r.env_id, "episode": r.episode, "task": r.task_id, "valid": r.valid, "verdict": r.verdict,
                 "failed_gates": r.bad_gates, "score": r.score, "checker_error": r.checker_error, "verify_s": round(dt, 3),
-                "actions": trace.state.actions, "invalid_actions": trace.state.invalid_actions, "parent": self.data.drums_parent}
+                "actions": trace.state.actions, "invalid_actions": trace.state.invalid_actions, "parent": self.data.drums_parent,
+                "audit": getattr(r, "audit", None) or {}, "audit_flags": getattr(r, "audit_flags", []),
+                "trusted": getattr(r, "trusted", None)}
         trace.info["drums"] = info
         trace.record_metric("drums_valid", float(r.valid))
+        if info["trusted"] is not None:
+            trace.record_metric("drums_reward_trusted", float(bool(info["trusted"])))
         trace.record_metric("drums_actions", float(trace.state.actions))
         if r.checker_error is not None:
             raise RuntimeError(f"OSWorld checker failed on env {r.env_id}: {r.checker_error}")
@@ -281,7 +293,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         steps0 = await asyncio.to_thread(step_count, env)
         child = task.with_data(drums_steps=steps0, drums_turn_cap=self.config.agent.max_turns,
             prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs, tools.style),
-            system_prompt=(S.build_system_prompt() if tools.style == "scalecua" else SYSTEM_PROMPT.format(w=obs[0], h=obs[1])),
+            system_prompt=(S.build_system_prompt() if tools.style == "scalecua" else
+                           (HYBRID_PROMPT if tools.style == "hybrid" else SYSTEM_PROMPT).format(w=obs[0], h=obs[1])),
             drums_env_id=env.id, drums_episode=env.record.get("episode"), drums_parent=parent)
         t0 = time.time()
         trace = await agents.agent.run(child)
@@ -289,7 +302,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         self._record({"t": time.time(), "episode_id": episode_id, "task": task.data.osworld.get("id"), "env": env.id,
                       "parent": parent, "drums_episode": env.record.get("episode"), "valid": d.get("valid"),
                       "verdict": d.get("verdict"), "failed_gates": d.get("failed_gates"), "score": d.get("score"),
-                      "checker_error": d.get("checker_error"), "reward": trace.reward if (trace.ok and not trace.is_dropped) else None,
+                      "checker_error": d.get("checker_error"), "audit_flags": d.get("audit_flags"), "trusted": d.get("trusted"),
+                      "reward": trace.reward if (trace.ok and not trace.is_dropped) else None,
                       "rewards": {k: (v.value if v is not None else None) for k, v in trace.rewards.items()},
                       "dropped": trace.dropped, "ok": trace.ok, "errors": [e.type + ": " + e.message[:300] for e in trace.errors],
                       "turns": trace.num_turns, "actions": d.get("actions"), "stop": trace.stop_condition,
