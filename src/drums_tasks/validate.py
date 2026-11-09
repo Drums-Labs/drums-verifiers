@@ -191,6 +191,7 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=0, help="first N tasks per family")
     ap.add_argument("--sample", type=int, default=0, help="K random tasks per family (seeded)")
     ap.add_argument("--sample-seed", type=int, default=20261108)
+    ap.add_argument("--ids", default="", help="a file of task ids (one per line): run only these")
     ap.add_argument("--token-file", default=os.path.expanduser("~/.drums-token"))
     a = ap.parse_args(argv)
     tasks, sols = load(a.tasks)
@@ -209,6 +210,9 @@ def main(argv=None):
         elif a.limit:
             ts = ts[:a.limit]
         pick += ts
+    if a.ids:
+        want = {x.strip() for x in open(a.ids) if x.strip()}
+        pick = [t for t in pick if t["id"] in want]
     os.makedirs(a.out, exist_ok=True)
     rp = os.path.join(a.out, "records.jsonl")
     done = set()
