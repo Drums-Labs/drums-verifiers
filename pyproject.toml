@@ -7,13 +7,16 @@ dependencies = [
     # verifiers v1 as pinned by prime-rl a566e5d8 (deps/verifiers submodule)
     "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers@60290d436fcb4c2ad6dd7d0986bcf00ff2366031",
     "pillow>=10",
-    # the Drums SDK (`drums` 0.2, standard library only) ships with drumsd: pip install <drumsd>/python
-    "drums>=0.2",
+    # the Drums SDK (distribution drums-sdk, import name drums, standard library only). Needs 0.2.5+ (drums.hybrid,
+    # drums.Overloaded). Until it is on PyPI: pip install the wheel from /opt/drums/sdk or from Git (README, Install).
+    "drums-sdk>=0.2.5",
 ]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-asyncio>=0.23"]
-# the task factory's generator: the same versions as drumsd's checker venv, so a build is byte-identical anywhere
+# the task factory's generator: the same versions as drumsd's checker venv (install/osw-requirements.lock), so a build is
+# byte-identical anywhere. pillow==11.0.0 conflicts with prime-rl's renderers[multimodal] (pillow>=12.2.0): install this
+# extra in its own venv (.venv-factory), never next to prime-rl. See CONTRIBUTING.md.
 factory = ["openpyxl==3.1.5", "python-docx==1.2.0", "python-pptx==1.0.2", "pillow==11.0.0", "lxml==6.1.3"]
 verl = ["verl==0.9.1", "cachetools", "uvicorn", "fastapi"]
 skyrl = ["skyrl-gym==0.4.0"]

@@ -5,17 +5,30 @@ Drums computer-use environments for [verifiers](https://github.com/PrimeIntellec
 host running one OSWorld task. The model acts through `computer_*` tools and gets a screenshot back after every action.
 The reward is OSWorld's own checker, returned together with the episode's gate verdict.
 
-Tested against: verifiers `60290d43` (the commit prime-rl `a566e5d8` pins), drumsd / `drums` SDK 0.2 (`sdk-v0`, `47891e1`).
+Tested against: verifiers `60290d43` (the commit prime-rl `a566e5d8` pins), drumsd v0.2.0 and the Drums Python SDK 0.2.5 ([drums-python-sdk](https://github.com/Drums-Labs/drums-python-sdk) `main`, `f8124ac`; the commit drumsd's `install/lock.json` pins). The SDK must be 0.2.5 or later: this package uses `drums.hybrid` and `drums.Overloaded`.
 
 ## Install
 
 On the machine that runs the env workers (it must reach drumsd; a tunnel is fine):
 
 ```
-pip install <drumsd checkout>/python      # the drums SDK (standard library only)
+pip install drums-sdk                     # the Drums SDK (import name `drums`; standard library only)
 pip install -e .                          # this package (pulls verifiers at the pinned commit)
 export DRUMS_URL=http://127.0.0.1:7070 DRUMS_TOKEN_FILE=/etc/drums/token
 ```
+
+Until `drums-sdk` is on PyPI, install the SDK from Git or from the wheel a drumsd release ships, then this package:
+
+```
+# from Git (the branch that carries the drums-sdk distribution name; needs read access while the repo is private)
+pip install "drums-sdk @ git+https://github.com/Drums-Labs/drums-python-sdk@pypi-release"
+# or from an installed drumsd host (install.sh puts the release's wheel in /opt/drums/sdk)
+pip install /opt/drums/sdk/drums*.whl
+pip install -e .
+```
+
+`pip install -e '.[test]'` adds pytest. `.[factory]` (the task generator's pins) does not install next to prime-rl: see
+[CONTRIBUTING.md](CONTRIBUTING.md#the-factory-extra-and-prime-rl).
 
 ## Use with prime-rl
 
@@ -56,6 +69,8 @@ one line per scored trace: env, fork parent, verdict, failed gates, score, rewar
 `pytest tests` runs the unit tests, plus an end-to-end run of `vf-eval` against a fake drumsd (`tests/fake_drumsd.py`)
 and the mock policy. That run covers single envs, fork groups, invalid children that get dropped, and a mid-episode
 environment failure.
+
+How to run them, add a task family, and send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acceptance (fresh host, real model)
 
