@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import base64
-import io
 import json
 
-from ..core import HOME, Spec, gui, phrase, pick, py, setup_launch, setup_sleep, sha256, sh, sleep, write_file_steps
+from ..core import HOME, Spec, gui, phrase, pick, setup_launch, setup_sleep, sha256, sleep, write_file_steps
 from ..data import CITIES, PRODUCTS, TOPICS, html_page, image, jpeg_bytes, png_bytes, sentence
 
 SITE = f"{HOME}/.t6site"
@@ -296,7 +295,7 @@ def code_fix(rng, idx):
     proj = f"{HOME}/projects/{pick(rng, ['utils', 'lib', 'helpers', 'core'])}{rng.randint(1, 99)}"
     path = f"{proj}/{pick(rng, ['mathutil', 'textutil', 'funcs', 'helpers'])}.py"
     nonce = "T6-OK-" + "".join(rng.choice("abcdef0123456789") for _ in range(16))
-    header = f'"""Utilities."""\n\n\n'
+    header = '"""Utilities."""\n\n\n'
     instr = phrase(rng, [
         "The function {n} in {f} has a bug. Fix it so that it does this: {d}. Keep its name and arguments, and save the file.",
         "Open {f} in VS Code and correct {n}: it should {d2}. Save.",

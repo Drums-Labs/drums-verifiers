@@ -2,9 +2,9 @@
 # launch-host.sh: a fresh acceptance host (latest Ubuntu 24.04 from SSM, c8i.4xlarge, 120 GiB gp3), plus an ssh alias
 # `drums-acceptance`. Prints the instance id. Terminate it after the run:
 #   aws --profile $PROFILE --region us-east-1 ec2 terminate-instances --instance-ids <id>
-#   PROFILE=drums-operator SUBNET=subnet-0bc305a757e1d96ff SG=sg-0bec95602db3fd3b5 KEY=drums-ec2-mac acceptance/launch-host.sh
+#   PROFILE=my-aws-profile SUBNET=subnet-... SG=sg-... KEY=my-key-pair acceptance/launch-host.sh
 set -euo pipefail
-P=${PROFILE:-drums-operator}; REG=${REGION:-us-east-1}; TYPE=${TYPE:-c8i.4xlarge}
+P=${PROFILE:?}; REG=${REGION:-us-east-1}; TYPE=${TYPE:-c8i.4xlarge}
 SUBNET=${SUBNET:?}; SG=${SG:?}; KEY=${KEY:?}; PEM=${PEM:-~/.ssh/$KEY.pem}
 AMI=$(aws --profile "$P" --region "$REG" ssm get-parameter --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query Parameter.Value --output text)
 ID=$(aws --profile "$P" --region "$REG" ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --key-name "$KEY" --subnet-id "$SUBNET" \

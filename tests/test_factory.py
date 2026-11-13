@@ -4,7 +4,6 @@ files written the way the scripted solutions write them (a stand-in ctx that map
     .venv-factory/bin/python -m pytest tests/test_factory.py      (needs the generator pins: t6/requirements-factory.txt)
 """
 import base64
-import hashlib
 import importlib.util
 import json
 import os
