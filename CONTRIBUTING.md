@@ -7,19 +7,22 @@ rules below apply to all three.
 
 ## Set up
 
-```
+```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install drums-sdk                      # or the Git / wheel fallback in README.md, until drums-sdk is on PyPI
-pip install -e '.[test]'                   # this package, verifiers at the pinned commit, pytest
+pip install -e '.[test]' ruff              # this package, verifiers at the pinned commit, drums-sdk from PyPI, pytest
 ```
 
 The factory's generator has its own venv, because its pins must match drumsd's checker venv exactly (that is what
 makes a build byte-identical on any machine) and one of them conflicts with prime-rl:
 
-```
+```bash
 python3 -m venv .venv-factory
-.venv-factory/bin/pip install -r t6/requirements-factory.txt -e '.[test]'
+.venv-factory/bin/pip install -r t6/requirements-factory.txt pymupdf==1.28.2 pypdf==6.20.1 pandas==2.2.3 pytest pytest-asyncio
+.venv-factory/bin/pip install -e . --no-deps
 ```
+
+(`pymupdf`, `pypdf` and `pandas` are the checker venv's parsers that the redundant checkers use; the versions are
+drumsd's `install/osw-requirements.lock`.)
 
 ### The `factory` extra and prime-rl
 
@@ -31,15 +34,17 @@ them. If drumsd's checker venv ever moves to Pillow 12, bump the pin here and `G
 
 ## Run the tests
 
-```
-pytest tests                                       # unit tests + the end-to-end run against the fake drumsd
+```bash
+ruff check .                                       # what CI runs first
+python -m pytest tests                             # unit tests + the end-to-end run against the fake drumsd
 .venv-factory/bin/python -m pytest tests/test_factory.py    # the factory: deterministic builds, task shape, checkers
 ```
 
 - `tests/test_e2e_fake.py` starts `tests/fake_drumsd.py` and the mock policy and runs `vf-eval` through them: single
   envs, fork groups, invalid children that are dropped, a mid-episode environment failure, the reuse guard, quarantine.
   It is skipped when `vf-eval` is not on the path (install the package first).
-- `tests/test_factory.py` needs the generator pins; it skips itself when `openpyxl`, `docx` or `pptx` are missing.
+- `tests/test_factory.py` needs the generator pins; it skips itself when `openpyxl`, `docx` or `pptx` are missing
+  (so it is skipped in CI, which installs only `.[test]`; run it in `.venv-factory` before you send a factory change).
   It never needs a desktop: the checkers run on files written the way the scripted solutions write them.
 - Nothing in `tests/` talks to a real drumsd. Validation on a real host is the step below.
 
@@ -88,5 +93,11 @@ Then:
 - Rewards that cannot be trusted never reach the trainer as rewards (README, "Rewards that cannot be trusted"). Any
   change to `taskset.py` that touches gates, verdicts or `dropped` reasons needs a test in `tests/test_e2e_fake.py`.
 - Write plain commit messages that say what changed and why. No generated attribution lines.
+- Sign off every commit (`git commit -s`). The sign-off is your statement under the
+  [Developer Certificate of Origin](https://developercertificate.org/) that you have the right to submit the change
+  under this repository's licence (Apache-2.0).
 - No secrets, tokens, hostnames of private machines, or customer names in code, tests, fixtures or logs.
-- Run `pytest tests` before you push. CI is not wired for this repo yet; the PR author is the CI.
+- Run `ruff check .` and `python -m pytest tests` before you push; CI (`.github/workflows/ci.yml`) runs the same two
+  commands on Python 3.11 and 3.12 and must be green before a merge.
+- Changes to the lab verifier `src/drums_tasks/verifier/drums_t6.py` change the bytes of every build (it is copied
+  into the task set and hashed in `index.json`): bump `GENERATOR_VERSION` and say so.
