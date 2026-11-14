@@ -54,13 +54,15 @@ The repository has three parts:
 
 ### Install
 
-Python 3.11 or later. The package is not on PyPI yet; install it from Git. It pulls `verifiers` at the commit prime-rl
-pins and the Drums SDK (`drums-sdk`, import name `drums`) from PyPI.
+Python 3.11 or later. The package pulls `verifiers` (0.4.1 or later, the version prime-rl requires) and the Drums SDK
+(`drums-sdk`, import name `drums`) from PyPI.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install "drums-verifiers[test] @ git+https://github.com/Drums-Labs/drums-verifiers"
+pip install "drums-verifiers[test]"
 ```
+
+To work from a checkout instead: `pip install -e ".[test]"` in the repository.
 
 Extras: `test` (pytest), `verl`, `skyrl`, and `factory` (the task generator's pins; it needs its own venv, see
 [Development](#development)).
@@ -82,7 +84,7 @@ export DRUMS_URL=http://127.0.0.1:7070
 export DRUMS_TOKEN_FILE=/tmp/drums-token
 export DRUMS_RECORD=/tmp/drums-records.jsonl
 export MOCK_KEY=x
-vf-eval drums-verifiers -m mock -n 1 -r 2 --no-push --client.base-url http://127.0.0.1:8011/v1 --client.api-key-var MOCK_KEY
+vf-run drums-verifiers -m mock -n 1 -r 2 --client.base-url http://127.0.0.1:8011/v1 --client.api-key-var MOCK_KEY
 ```
 
 Two rollouts run (one probe, one scripted solve), and `DRUMS_RECORD` gets one line per scored trace:
@@ -118,7 +120,7 @@ export DRUMS_URL=http://127.0.0.1:7070
 export DRUMS_TOKEN_FILE=/etc/drums/token
 ```
 
-Then the same `vf-eval` command with a real model endpoint that serves tool calls (`-m` and `--client.base-url`), or
+Then the same `vf-run` command with a real model endpoint that serves tool calls (`-m` and `--client.base-url`), or
 prime-rl:
 
 ```toml
@@ -234,7 +236,7 @@ ruff check .
 python -m pytest tests
 ```
 
-`pytest tests` runs the unit tests and an end-to-end `vf-eval` run against the fake drumsd and the mock policy: single
+`pytest tests` runs the unit tests and an end-to-end `vf-run` run against the fake drumsd and the mock policy: single
 environments, fork groups, invalid children that are dropped, a mid-episode environment failure, the reuse guard,
 quarantine. Nothing in `tests/` talks to a real drumsd. CI ([ci.yml](.github/workflows/ci.yml)) runs exactly these
 three commands on Ubuntu with Python 3.11 and 3.12.
