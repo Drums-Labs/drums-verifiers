@@ -40,9 +40,9 @@ python -m pytest tests                             # unit tests + the end-to-end
 .venv-factory/bin/python -m pytest tests/test_factory.py    # the factory: deterministic builds, task shape, checkers
 ```
 
-- `tests/test_e2e_fake.py` starts `tests/fake_drumsd.py` and the mock policy and runs `vf-eval` through them: single
+- `tests/test_e2e_fake.py` starts `tests/fake_drumsd.py` and the mock policy and runs `vf-run` through them: single
   envs, fork groups, invalid children that are dropped, a mid-episode environment failure, the reuse guard, quarantine.
-  It is skipped when `vf-eval` is not on the path (install the package first).
+  It is skipped when `vf-run` is not on the path (install the package first).
 - `tests/test_factory.py` needs the generator pins; it skips itself when `openpyxl`, `docx` or `pptx` are missing
   (so it is skipped in CI, which installs only `.[test]`; run it in `.venv-factory` before you send a factory change).
   It never needs a desktop: the checkers run on files written the way the scripted solutions write them.

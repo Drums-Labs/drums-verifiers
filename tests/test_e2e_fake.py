@@ -1,4 +1,4 @@
-"""The whole verifiers path (vf-eval -> DrumsEnv -> null harness -> computer_* MCP tools -> drums SDK) against a fake drumsd
+"""The whole verifiers path (vf-run -> DrumsEnv -> null harness -> computer_* MCP tools -> drums SDK) against a fake drumsd
 and the scripted mock policy. Checks: valid episodes get the checker's score; a fork group's children are scored one by
 one; children whose verdict is invalid are DROPPED with no reward even when the checker said 1.0."""
 import json
@@ -13,8 +13,8 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-VF_EVAL = shutil.which("vf-eval") or os.path.join(os.path.dirname(sys.executable), "vf-eval")
-pytestmark = pytest.mark.skipif(not os.path.exists(VF_EVAL), reason="vf-eval not installed")
+VF_RUN = shutil.which("vf-run") or os.path.join(os.path.dirname(sys.executable), "vf-run")
+pytestmark = pytest.mark.skipif(not os.path.exists(VF_RUN), reason="vf-run not installed")
 
 
 def free_port():
@@ -46,10 +46,11 @@ def run_eval(d, dp, mp, cpq, name, *extra, crash=False, quarantine=False, long=F
     mp = cpq[0] if crash else cpq[1] if quarantine else cpq[2] if long else mp
     rec = d / f"{name}.jsonl"
     env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
-    r = subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url",
+    r = subprocess.run([VF_RUN, "drums-verifiers", "-m", "mock", "-n", "1", "--client.base-url",
                         f"http://127.0.0.1:{mp}/v1", "--client.api-key-var", "MOCK_KEY", "-o", str(d / name), *extra],
                        env=env, capture_output=True, text=True, timeout=600)
-    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    # vf-run exits non-zero when every episode errored (the crash scenario); the record is still what we check
+    assert r.returncode == 0 or crash, r.stdout[-2000:] + r.stderr[-2000:]
     return [json.loads(l) for l in open(rec)]
 
 
@@ -144,7 +145,7 @@ def test_env_that_never_starts_is_recorded_as_a_failed_episode(servers):
     d, dp, mp, cpq = servers
     rec = d / "nostart.jsonl"
     env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
-    subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
+    subprocess.run([VF_RUN, "drums-verifiers", "-m", "mock", "-n", "1", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
                     "--client.api-key-var", "MOCK_KEY", "-o", str(d / "nostart"), "--env.taskset.task-ids",
                     '["fa11ed00-0000-4000-8000-000000000000"]'], env=env, capture_output=True, text=True, timeout=600)
     rows = [json.loads(l) for l in open(rec)]
@@ -169,7 +170,7 @@ def test_fork_refused_past_the_wait_is_a_recorded_failed_episode(servers):
     d, dp, mp, cpq = servers
     rec = d / "overload_always.jsonl"
     env = dict(os.environ, DRUMS_URL=f"http://127.0.0.1:{dp}", DRUMS_TOKEN_FILE=str(d / "tok"), DRUMS_RECORD=str(rec), MOCK_KEY="x")
-    subprocess.run([VF_EVAL, "drums-verifiers", "-m", "mock", "-n", "1", "--no-push", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
+    subprocess.run([VF_RUN, "drums-verifiers", "-m", "mock", "-n", "1", "--client.base-url", f"http://127.0.0.1:{mp}/v1",
                     "--client.api-key-var", "MOCK_KEY", "-o", str(d / "overload_always"), "--env.fork-n", "2", "--env.prefix",
                     '["OVERLOAD_ALWAYS = 1"]', "--env.settle-s", "0", "--env.admission-wait-s", "3"],
                    env=env, capture_output=True, text=True, timeout=600)

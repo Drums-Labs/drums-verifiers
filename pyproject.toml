@@ -1,18 +1,39 @@
 [project]
 name = "drums-verifiers"
-version = "0.1.0"
+version = "0.2.1"
 description = "Drums computer-use environments (isolated desktops, OSWorld tasks, gate-checked rewards) for verifiers and prime-rl."
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-dependencies = [
-    # verifiers v1 as pinned by prime-rl a566e5d8 (deps/verifiers submodule)
-    "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers@60290d436fcb4c2ad6dd7d0986bcf00ff2366031",
-    "pillow>=10",
-    # the Drums SDK (distribution drums-sdk, import name drums, standard library only). Needs 0.2.5+ (drums.hybrid,
-    # drums.Overloaded). Until it is on PyPI: pip install the wheel from /opt/drums/sdk or from Git (README, Install).
-    "drums-sdk>=0.2.5",
+authors = [{name = "Drums Labs"}]
+keywords = ["drums", "computer-use", "reinforcement-learning", "rl", "verifiers", "prime-rl", "osworld", "desktop", "environment"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+dependencies = [
+    # verifiers v1. prime-rl a566e5d8 pins commit 60290d43 (between the 0.4.0 and 0.4.1 releases); 0.4.1 contains it.
+    "verifiers>=0.4.1,<0.5",
+    "pillow>=10",
+    # the Drums SDK (distribution drums-sdk, import name drums, standard library only)
+    "drums-sdk>=0.3.0",
+]
+
+[project.urls]
+Homepage = "https://drums.run"
+Documentation = "https://docs.drums.run/guides/prime-rl-and-verifiers"
+Repository = "https://github.com/Drums-Labs/drums-verifiers"
+Changelog = "https://github.com/Drums-Labs/drums-verifiers/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Drums-Labs/drums-verifiers/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8", "pytest-asyncio>=0.23"]
@@ -26,9 +47,6 @@ skyrl = ["skyrl-gym==0.4.0"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/drums_verifiers", "src/drums_chat", "src/drums_tasks", "src/drums_adapters"]
