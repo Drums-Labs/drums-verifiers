@@ -1,0 +1,37 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got. Include the command line and the error text.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: drums-verifiers commit, drumsd version (`client.health()["version"]`), drums-sdk version, verifiers or prime-rl commit, Python version, OS.
+      placeholder: |
+        drums-verifiers: abc1234
+        drumsd: 0.2.0
+        drums-sdk: 0.2.5
+        prime-rl: a566e5d8
+        Python 3.12, Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: record
+    attributes:
+      label: Record or trace
+      description: If scoring is involved, the `DRUMS_RECORD` line(s) or `trace.info["drums"]` for the affected episode. Remove tokens and private hostnames.
+      render: json
+  - type: checkboxes
+    id: host
+    attributes:
+      label: Where it reproduces
+      options:
+        - label: Against the fake drumsd (`pytest tests` or the quickstart without a host)
+        - label: Against a real drumsd host

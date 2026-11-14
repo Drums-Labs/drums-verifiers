@@ -3,7 +3,7 @@
 # (pinned) and this adapter, then run model-driven desktop rollouts through prime-rl's eval pipeline. Everything is recorded
 # and pulled back.
 #
-#   acceptance/acceptance.sh --host drums-exp2 --release dist/drums-release-<commit>.tar.gz --model-url http://10.0.0.5:8000/v1 \
+#   acceptance/acceptance.sh --host my-drums-host --release dist/drums-release-<commit>.tar.gz --model-url http://10.0.0.5:8000/v1 \
 #       [--model NAME] [--api-key-var VAR] [--tasks 4] [--fork 4] [--rollouts 2] [--tool-style scalecua] [--max-turns 15] \
 #       [--out DIR] [--skip-install] [--install-only] [--deadline-min M] [--images-to-keep 5] [--temperature 0.8]
 #       [--max-tokens 2048] [--pause-s 2] [-- extra prime-rl eval args]

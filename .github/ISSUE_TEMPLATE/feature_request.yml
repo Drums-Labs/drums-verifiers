@@ -1,0 +1,20 @@
+name: Feature request
+description: A task family, checker kind, tool, adapter or option you need
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The training or evaluation set-up, and what is missing.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you would add or change. For a task family, the app, what the agent must do, how the checker decides, and at least two near-miss solutions that must score 0.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead

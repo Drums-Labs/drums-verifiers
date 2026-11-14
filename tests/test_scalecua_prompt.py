@@ -1,5 +1,6 @@
 """The ScaleCUA system prompt hands the model no credential (the upstream line with the image's sudo password is removed)."""
-import importlib.util, os
+import importlib.util
+import os
 
 _p = os.path.join(os.path.dirname(__file__), "..", "src", "drums_verifiers", "scalecua.py")
 _spec = importlib.util.spec_from_file_location("scalecua_only", _p)

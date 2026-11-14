@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    # verifiers is pinned to the commit prime-rl pins and the factory extra to drumsd's checker venv; those pins are
+    # moved by hand (CONTRIBUTING.md), so dependabot only proposes the rest.
+    ignore:
+      - dependency-name: verifiers
+      - dependency-name: openpyxl
+      - dependency-name: python-docx
+      - dependency-name: python-pptx
+      - dependency-name: pillow
+      - dependency-name: lxml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

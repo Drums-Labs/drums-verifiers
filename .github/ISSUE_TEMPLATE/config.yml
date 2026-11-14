@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/Drums-Labs/drums-verifiers/security/advisories/new
+    about: Report a vulnerability privately; do not open a public issue.
+  - name: Documentation
+    url: https://console.drums.run/docs
+    about: Drums docs, including the SDK and the host.
