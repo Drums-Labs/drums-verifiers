@@ -38,4 +38,4 @@ What the desktop isolates is drumsd's responsibility. In short, and honestly:
 - Known open item: a Chrome crash in forked children was traced to memory protection keys and fixed in the Drums CRIU
   fork; the compatibility regression it exposed in the hardened profile is still being worked through.
 
-Details: the `security` page of the [docs](https://console.drums.run/docs) and the drumsd repository.
+Details: the `security` page of the [docs](https://docs.drums.run) and the drumsd repository.

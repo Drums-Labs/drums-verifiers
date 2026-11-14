@@ -17,13 +17,13 @@
 <p align="center">
   <a href="LICENSE"><img alt="Licence Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue"></a>
   <a href="https://github.com/Drums-Labs/drums-verifiers/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Drums-Labs/drums-verifiers/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://console.drums.run/docs"><img alt="Docs" src="https://img.shields.io/badge/docs-console.drums.run-black"></a>
+  <a href="https://docs.drums.run"><img alt="Docs" src="https://img.shields.io/badge/docs-docs.drums.run-black"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB">
 </p>
 
 <p align="center">
   <a href="https://drums.run">Website</a> ·
-  <a href="https://console.drums.run/docs">Docs</a> ·
+  <a href="https://docs.drums.run">Docs</a> ·
   <a href="https://bench.drums.run">Benchmarks</a> ·
   <a href="https://console.drums.run">Console</a>
 </p>
@@ -264,7 +264,7 @@ own.
 Report vulnerabilities through GitHub's private vulnerability reporting, see [SECURITY.md](SECURITY.md). The
 environment never puts the drumsd URL or token into task data or traces; the token comes from `DRUMS_TOKEN_FILE`
 (default `/etc/drums/token`) or `DRUMS_TOKEN`. What the desktop isolates and what it does not is documented in
-SECURITY.md and in the [docs](https://console.drums.run/docs).
+SECURITY.md and in the [docs](https://docs.drums.run).
 
 ## Contributing
 

@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/Drums-Labs/drums-verifiers/security/advisories/new
     about: Report a vulnerability privately; do not open a public issue.
   - name: Documentation
-    url: https://console.drums.run/docs
+    url: https://docs.drums.run
     about: Drums docs, including the SDK and the host.
