@@ -23,7 +23,10 @@ import zipfile
 
 HOME = "/home/user"
 VERIFIER = "drums_t6"
-CHUNK = 60_000          # base64 characters per argv string (Linux MAX_ARG_STRLEN is 128 KiB)
+CHUNK = 60_000          # base64 characters per argv string in SETUP steps (Linux MAX_ARG_STRLEN is 128 KiB)
+# drumsd validates every string of an action's argv at <= 8192 characters (`invalid step body: action.command.N Too
+# big`); ACTION steps (oracle, near misses) chunk below that. Setup steps travel in the task config, not a step body.
+ACTION_CHUNK = 8_000
 FIXED_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 
 # the soffice used by the oracles: a private profile, so it never touches the running GUI instance's profile
@@ -67,7 +70,8 @@ _WRITE = "import base64,os,sys;p=sys.argv[1];os.makedirs(os.path.dirname(p),exis
 def write_file_steps(path: str, data: bytes, kind: str = "action") -> list:
     """Execute steps that write `data` to `path` in the desktop (chunked under the argv limit). kind: action | setup."""
     b64 = base64.b64encode(data).decode()
-    chunks = [b64[i:i + CHUNK] for i in range(0, len(b64), CHUNK)] or [""]
+    size = ACTION_CHUNK if kind == "action" else CHUNK
+    chunks = [b64[i:i + size] for i in range(0, len(b64), size)] or [""]
     out = []
     for i, c in enumerate(chunks):
         cmd = ["python3", "-c", _WRITE, path, "wb" if i == 0 else "ab", c]
