@@ -209,7 +209,9 @@ def calc_aggregate(rng, idx):
         conds = _conditions(rng, rows)
         if not conds:
             continue
-        cond = pick(rng, conds)
+        # a text equality and a number comparison are drawn equally often (numbers offer many more thresholds)
+        kinds = [k for k in ([c for c in conds if c["op"] == "is"], [c for c in conds if c["op"] != "is"]) if k]
+        cond = pick(rng, pick(rng, kinds))
         agg = pick(rng, list(AGG))
         col = cond["column"] if agg == "count" else pick(rng, [c for c in DATASETS[ds]["num"] if c != cond["column"]])
         ci = rows[0].index(col)
