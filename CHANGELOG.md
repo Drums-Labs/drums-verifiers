@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy
+  every file matching a pattern from a folder tree into a target folder under a renaming scheme), `d1_calc_aggregate`
+  (a sum, average, count or maximum of a column under a condition, written to a cell) and `d1_writer_style` (bold every
+  occurrence of a word, save under a new name). 96 variants each at scale 1.0; four near misses each.
+- `python -m drums_tasks.split`: a training set and a held-out set of one family from two seeds, `pool.json`, and an
+  overlap check (instruction text, seeded file path and content, params) that fails the split on any collision.
+  `drums_tasks.build.generate` takes `count` and `start` for that.
+- `GENERATOR_VERSION` is `t6-factory-2`: the default build is now 40 families, 1,928 tasks, 5,437 near misses.
+
 ## 0.2.1 - 2026-11-13
 
 First release on PyPI: `pip install drums-verifiers`.

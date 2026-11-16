@@ -85,6 +85,14 @@ Then:
 4. Bump `GENERATOR_VERSION` in `src/drums_tasks/__init__.py` whenever a build's bytes change (new family, changed
    family, changed pins). Published task sets are named by seed and generator version.
 
+A family meant for a train / held-out study must draw every parameter, file name, content and number from `rng`, and
+its `params` must name the variant fully (paths, pattern, target, expected value): `python -m drums_tasks.split`
+builds the two sets from two seeds and rejects the split when a held-out variant repeats a training variant's
+instruction, a seeded file (path and content) or its params. `tests/test_d1.py` shows the offline proof such a family
+gets: distinct variants across indices, the oracle and every near miss scored on the files the solutions write (the
+LibreOffice conversion replaced by a copy, plus a sample through a real `soffice` when one is installed), and a
+byte-identical double build.
+
 ## Pull requests
 
 - One change per PR, with the tests that cover it. A new family or checker kind comes with its validation run.
