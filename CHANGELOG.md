@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-11-16
+
 - Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy
   every file matching a pattern from a folder tree into a target folder under a renaming scheme), `d1_calc_aggregate`
   (a sum, average, count or maximum of a column under a condition, written to a cell) and `d1_writer_style` (bold every
@@ -10,6 +12,10 @@
   overlap check (instruction text, seeded file path and content, params) that fails the split on any collision.
   `drums_tasks.build.generate` takes `count` and `start` for that.
 - `GENERATOR_VERSION` is `t6-factory-2`: the default build is now 40 families, 1,928 tasks, 5,437 near misses.
+- `drums_tasks.validate` retries drumsd's 429 (admission) on step and verify as well, not only on create and fork.
+- Factory action steps chunk file writes at 8,000 base64 characters (drumsd caps a step argument at 8,192); setup
+  steps keep 60,000.
+- The built wheel and sdist are no longer tracked in the repository (`dist/` is ignored).
 
 ## 0.2.1 - 2026-11-13
 
