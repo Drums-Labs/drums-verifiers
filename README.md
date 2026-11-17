@@ -225,7 +225,9 @@ checker error, action counts, and the reward audit drumsd attached:
 
 The audit never changes `score` or `valid`; this package drops invalid episodes and leaves the use of `trusted` and
 the flags to the trainer. `DRUMS_RECORD=path.jsonl` writes one line per scored trace (environment, parent, verdict,
-failed gates, score, reward handed out, audit flags, `trusted`, drop reason, timings) for offline audit.
+failed gates, score, reward handed out, audit flags, `trusted`, drop reason, timings) for offline audit, plus the
+episode's action transcript (`transcript`: tool, arguments cut to 200 characters, status, latency) and per-turn token
+counts (`turn_tokens`); `env.transcript = false` turns those two off.
 
 ## Vendored code: SCALE-CUA
 

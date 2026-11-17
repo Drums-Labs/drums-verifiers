@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Episode transcripts (A-42): each `DRUMS_RECORD` / `record_path` row now has `transcript`, the episode's tool calls in
+  order (`tool`, `args` as JSON cut to 200 characters, `status` = ok / invalid / env_failed / quarantined / skipped /
+  no_action / error, `latency_s` for the whole action + pause + screenshot, `t`). It also has `turn_tokens`, the prompt
+  (cache reads included), cached and completion tokens and seconds of each model call; the token fields are null when
+  the client reports no usage. The action list is also in `trace.info["drums"]["transcript"]`. On by default;
+  `env.transcript = false` gives the 0.2.2 rows.
+
 ## 0.2.2 - 2026-11-16
 
 - Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy
