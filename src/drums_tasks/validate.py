@@ -38,11 +38,22 @@ def load(dirname):
     return tasks, sols
 
 
+def retry_overloaded(fn, tries=60):
+    """drumsd's admission control answers 429 while too much memory is promised to running operations: wait, retry."""
+    for i in range(tries):
+        try:
+            return fn()
+        except drums.Overloaded:
+            if i == tries - 1:
+                raise
+            time.sleep(min(30, 3 + i * 2) + random.random() * 3)
+
+
 def run_actions(env, actions):
     fails = []
     for i, a in enumerate(actions):
         try:
-            r = env.step(a, check=False)
+            r = retry_overloaded(lambda: env.step(a, check=False))
             res = r.result or {}
             if res.get("returncode") not in (0, None) or res.get("status") == "error":
                 fails.append({"i": i, "rc": res.get("returncode"), "err": (res.get("error") or "")[-300:]})
@@ -56,7 +67,7 @@ def child_record(name, env, actions):
     fails = run_actions(env, actions)
     t1 = time.time()
     try:
-        r = env.verify(strict=False)
+        r = retry_overloaded(lambda: env.verify(strict=False))
         out = {"name": name, "score": r.score, "valid": r.valid, "checker_error": r.checker_error,
                "audit": r.audit, "trusted": r.trusted, "info": (r.raw.get("checker") or {}).get("info"),
                "invalid_reasons": r.invalid_reasons}
@@ -99,17 +110,6 @@ def judge(rec):
     if not p or "scope_violation" not in ((p.get("audit") or {}).get("flags") or []):
         why.append("scope probe not flagged")
     return not why, why
-
-
-def retry_overloaded(fn, tries=60):
-    """drumsd's admission control answers 429 while too much memory is promised to running operations: wait, retry."""
-    for i in range(tries):
-        try:
-            return fn()
-        except drums.Overloaded:
-            if i == tries - 1:
-                raise
-            time.sleep(min(30, 3 + i * 2) + random.random() * 3)
 
 
 def run_task(c, task, sol, args):

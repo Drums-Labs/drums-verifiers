@@ -175,8 +175,8 @@ directory of `<id>.json` files (`tasks_dir`).
 
 The task factory (`drums_tasks`) generates tasks in the same format with a `drums_verifier` evaluator: a function in
 the lab verifier `drums_t6.py`, its options, a redundant checker, and a scope manifest (the sha256 of every seeded file
-under the task's roots, plus the globs the task is allowed to change). 37 families across seven apps; the default
-build is 1,640 tasks with 4,285 near-miss solutions. Everything is a function of `(seed, family, index)`:
+under the task's roots, plus the globs the task is allowed to change). 40 families across seven apps; the default
+build is 1,928 tasks with 5,437 near-miss solutions. Everything is a function of `(seed, family, index)`:
 
 ```bash
 python -m drums_tasks.build --seed 1 --out /tmp/ts --check
@@ -191,6 +191,15 @@ host and accepts a task only when the checker separates them. The generator is d
 and a seed can rebuild a task set and its solutions; treat the seed of an evaluation set accordingly.
 
 How to add a family: [CONTRIBUTING.md](CONTRIBUTING.md#add-a-task-family).
+
+For a study that trains on some variants of one family and measures on others, `drums_tasks.split` builds a training
+set and a held-out set of that family from two seeds and writes `pool.json` beside them (ids, params, both seeds, the
+sha256 of each set); it fails when any held-out variant shares its instruction, a seeded file or its params with a
+training variant:
+
+```bash
+python -m drums_tasks.split --family d1_calc_aggregate --train-seed A --heldout-seed B --train 64 --heldout 32 --out /tmp/pool
+```
 
 ## Verifier contract
 

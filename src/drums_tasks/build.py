@@ -19,20 +19,22 @@ import sys
 
 from . import GENERATOR_VERSION
 from .core import build_task, canonical, rng_for
-from .families import apps, calc, files, multi, writer
+from .families import apps, calc, d1, files, multi, writer
 
 ALL = {}
-for mod in (calc, writer, files, apps, multi):
+for mod in (calc, writer, files, apps, multi, d1):
     ALL.update(mod.FAMILIES)
 
 
-def generate(seed: int, scale: float = 1.0, only=None):
+def generate(seed: int, scale: float = 1.0, only=None, count=None, start=0):
+    """count: exact variants per family instead of the registered count times scale; start: the first index."""
     tasks, sols = [], []
     for fam in sorted(ALL):
         if only and fam not in only:
             continue
         fn, n = ALL[fam]
-        for i in range(max(1, int(round(n * scale)))):
+        n = count if count is not None else max(1, int(round(n * scale)))
+        for i in range(start, start + n):
             spec = fn(rng_for(seed, fam, i), i)
             tid = f"t6-{fam.replace('_', '-')}-{i:04d}"
             t, s = build_task(spec, tid, seed)
@@ -41,9 +43,9 @@ def generate(seed: int, scale: float = 1.0, only=None):
     return tasks, sols
 
 
-def write(out: str, seed: int, scale: float, only=None) -> dict:
+def write(out: str, seed: int, scale: float, only=None, count=None, start=0) -> dict:
     os.makedirs(out, exist_ok=True)
-    tasks, sols = generate(seed, scale, only)
+    tasks, sols = generate(seed, scale, only, count, start)
     files = {"tasks.jsonl": b"".join(canonical(t) + b"\n" for t in tasks),
              "solutions.jsonl": b"".join(canonical(s) + b"\n" for s in sols)}
     here = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +63,8 @@ def write(out: str, seed: int, scale: float, only=None) -> dict:
              "multi_app": sum(1 for t in tasks if "multi" in t["related_apps"]),
              "sha256": {n: hashlib.sha256(d).hexdigest() for n, d in sorted(files.items())},
              "phrasing": "templates (no language model: none configured for this program)"}
+    if count is not None or start:
+        index.update(count=count, start=start)
     with open(os.path.join(out, "index.json"), "w") as f:
         json.dump(index, f, indent=1, sort_keys=True)
         f.write("\n")
