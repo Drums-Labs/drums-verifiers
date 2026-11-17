@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `drums_tasks.validate` takes its token from `$DRUMS_TOKEN` by default, like the SDK and the docs (A-14).
+  `--token-file` still works and wins when given; without either it falls back to `$DRUMS_TOKEN_FILE`, then
+  `~/.drums-token`. New `--url` (default `$DRUMS_URL`).
+
 ## 0.2.2 - 2026-11-16
 
 - Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy

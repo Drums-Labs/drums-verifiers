@@ -14,6 +14,9 @@ Per task (standard library + the drums SDK only):
      otherwise reject it with every reason.
 Writes OUT/records.jsonl (one line per task: every child's score, validity, audit, step failures, seconds) and
 OUT/summary.json. Resumable: tasks already in records.jsonl are skipped. The sample is seeded (--sample-seed).
+
+Connection: the URL is --url, else $DRUMS_URL (the SDK's default). The token is --token-file when given, else $DRUMS_TOKEN,
+else $DRUMS_TOKEN_FILE, else ~/.drums-token (the old default), the same order as the SDK and the docs.
 """
 from __future__ import annotations
 
@@ -182,6 +185,24 @@ def summarize(records):
             "audit_flags": flags, "families": dict(sorted(fam.items()))}
 
 
+LEGACY_TOKEN_FILE = "~/.drums-token"
+
+
+def resolve_token(token_file: str | None, environ=None) -> str:
+    """--token-file, then $DRUMS_TOKEN, then $DRUMS_TOKEN_FILE, then ~/.drums-token. Raises SystemExit naming all four."""
+    environ = os.environ if environ is None else environ
+    if token_file:
+        with open(os.path.expanduser(token_file)) as f:
+            return f.read().strip()
+    if environ.get("DRUMS_TOKEN"):
+        return environ["DRUMS_TOKEN"].strip()
+    for path in (environ.get("DRUMS_TOKEN_FILE"), LEGACY_TOKEN_FILE):
+        if path and os.path.exists(os.path.expanduser(path)):
+            with open(os.path.expanduser(path)) as f:
+                return f.read().strip()
+    raise SystemExit("no Drums token: set DRUMS_TOKEN, or pass --token-file, or set DRUMS_TOKEN_FILE, or write ~/.drums-token")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tasks", required=True)
@@ -192,7 +213,9 @@ def main(argv=None):
     ap.add_argument("--sample", type=int, default=0, help="K random tasks per family (seeded)")
     ap.add_argument("--sample-seed", type=int, default=20261108)
     ap.add_argument("--ids", default="", help="a file of task ids (one per line): run only these")
-    ap.add_argument("--token-file", default=os.path.expanduser("~/.drums-token"))
+    ap.add_argument("--url", default=None, help="drumsd or gateway URL (default $DRUMS_URL)")
+    ap.add_argument("--token-file", default=None,
+                    help="read the token from this file (default: $DRUMS_TOKEN, then $DRUMS_TOKEN_FILE, then ~/.drums-token)")
     a = ap.parse_args(argv)
     tasks, sols = load(a.tasks)
     only = set(a.only.split(",")) if a.only else None
@@ -220,7 +243,7 @@ def main(argv=None):
         done = {json.loads(x)["id"] for x in open(rp)}
     todo = [t for t in pick if t["id"] not in done]
     print(f"{len(pick)} tasks picked, {len(done)} done, {len(todo)} to run, {a.workers} workers", flush=True)
-    c = drums.connect(token=open(a.token_file).read().strip())
+    c = drums.connect(a.url, resolve_token(a.token_file))
     t0 = time.time()
     n = [0]
 
