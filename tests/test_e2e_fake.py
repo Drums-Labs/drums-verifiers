@@ -189,3 +189,27 @@ def test_close_during_a_drumsd_restart_is_retried(servers):
     sdk.client.cache_clear()
     for r in rows + [{"env": rows[0]["parent"]}]:
         assert sdk.env(r["env"], f"http://127.0.0.1:{dp}", str(d / "tok")).record["state"] == "destroyed", r["env"]
+
+
+def test_record_carries_the_action_transcript_and_turn_tokens(servers):
+    """A-42: every record row lists the episode's tool calls (tool, arguments cut to 200 characters, status, latency) and
+    the per-turn token counts the client reported."""
+    rows = run_eval(*servers, "transcript", "-r", "2")
+    for r in rows:
+        tr = r["transcript"]
+        acted = [x for x in tr if x["status"] == "ok" and x["tool"] not in ("computer_screenshot", "computer_wait")]
+        assert tr and len(acted) == r["actions"], tr
+        assert all(set(x) == {"tool", "args", "status", "latency_s", "t"} for x in tr)
+        assert all(x["tool"].startswith("computer_") and len(x["args"]) <= 200 and x["latency_s"] >= 0 for x in tr)
+        assert len(r["turn_tokens"]) == r["turns"]
+        assert all(t["prompt_tokens"] == 100 and t["completion_tokens"] == 20 for t in r["turn_tokens"])  # the mock's usage
+
+
+def test_transcript_is_off_with_the_flag(servers):
+    rows = run_eval(*servers, "notranscript", "--env.transcript", "false")
+    assert rows and all("transcript" not in r and "turn_tokens" not in r for r in rows)
+
+
+def test_env_failure_keeps_the_transcript_up_to_the_failure(servers):
+    rows = run_eval(*servers, "crash_transcript", crash=True)
+    assert rows[0]["transcript"] and rows[0]["transcript"][-1]["status"] == "env_failed"

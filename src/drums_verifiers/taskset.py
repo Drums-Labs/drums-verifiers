@@ -22,7 +22,10 @@ scored by its own checker and verdict. The N traces of the episode are the group
 (the group is the one episode) or `hierarchical_grpo` with `episode_agents = ["agent"]`.
 
 Every scored trace is also appended to a JSONL record (`record_path`): env ids, fork parent, verdict, failed gates, score,
-reward handed out, drop reason, timings."""
+reward handed out, drop reason, timings. With `transcript = true` (the default) the row also carries the episode's action
+list (`transcript`: tool, arguments cut to 200 characters, status, latency) and per-turn token counts (`turn_tokens`: prompt,
+cached and completion tokens of each model call, when the client reports usage); the action list is in
+`trace.info["drums"]["transcript"]` too."""
 from __future__ import annotations
 
 import asyncio
@@ -66,6 +69,8 @@ class DrumsTaskData(vf.TaskData):
     drums_parent: str | None = None
     drums_turn_cap: int | None = None
     """The agent's max_turns, copied by DrumsEnv: the response that would be the last allowed turn may not run actions."""
+    drums_transcript: bool = True
+    """Copied from DrumsEnvConfig.transcript: the tool server records each tool call when True."""
 
 
 class DrumsTaskConfig(vf.TaskConfig):
@@ -140,6 +145,8 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
                                    "verdict": v.get("verdict"), "failed_gates": v.get("gates", []), "score": None,
                                    "quarantined": trace.state.quarantined, "actions": trace.state.actions,
                                    "parent": self.data.drums_parent}
+            if self.data.drums_transcript:
+                trace.info["drums"]["transcript"] = list(trace.state.transcript)
             trace.record_metric("drums_valid", 0.0)
             trace.drop(f"drums_invalid:{v.get('verdict')}:{','.join(map(str, v.get('gates', []))) or 'quarantined'}")
             return None
@@ -155,6 +162,8 @@ class DrumsTask(vf.Task[DrumsTaskData, DrumsState, DrumsTaskConfig]):
                 "actions": trace.state.actions, "invalid_actions": trace.state.invalid_actions, "parent": self.data.drums_parent,
                 "audit": getattr(r, "audit", None) or {}, "audit_flags": getattr(r, "audit_flags", []),
                 "trusted": getattr(r, "trusted", None)}
+        if self.data.drums_transcript:
+            info["transcript"] = list(trace.state.transcript)
         trace.info["drums"] = info
         trace.record_metric("drums_valid", float(r.valid))
         if info["trusted"] is not None:
@@ -211,10 +220,29 @@ class DrumsEnvConfig(vf.EnvConfig):
     record_path: str | None = None
     """Append one JSON line per scored trace (default $DRUMS_RECORD, else no record)."""
     max_concurrent_agents: int | None = Field(8, ge=1)
+    transcript: bool = True
+    """Record each episode's action list (tool, arguments cut to 200 characters, result status, latency) and per-turn token
+    counts in the record row and in trace.info["drums"]["transcript"]. False: counts only, as in 0.2.2."""
     admission_wait_s: float = Field(900.0, ge=0)
     """drumsd refuses a create or fork with HTTP 429 (`drums.Overloaded`) when the host is near its memory floor; nothing was
     started, so the episode waits and asks again (backoff 2 s doubling to 30 s) for up to this many seconds before it fails.
     Every wait is recorded (`admission_waits`)."""
+
+
+def turn_tokens(trace) -> list[dict]:
+    """Per model call: prompt tokens (cache reads included), cached tokens, completion tokens, seconds. The token fields are
+    None when the client did not report usage for that call."""
+    out = []
+    for i, call in enumerate(getattr(trace, "calls", None) or []):
+        u = getattr(call, "usage", None)
+        span = getattr(call, "time", None)
+        dur = getattr(span, "duration", None)
+        cached = getattr(u, "cached_input_tokens", None) if u is not None else None
+        prompt = (getattr(u, "prompt_tokens", 0) + (cached or 0)) if u is not None else None
+        out.append({"turn": i, "prompt_tokens": prompt, "cached_tokens": cached,
+                    "completion_tokens": getattr(u, "completion_tokens", None) if u is not None else None,
+                    "s": round(dur, 3) if isinstance(dur, (int, float)) else None})
+    return out
 
 
 def _first_message(instruction: str, png: bytes, obs, style: str = "drums") -> list:
@@ -292,6 +320,7 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         png = await asyncio.to_thread(env.screenshot)
         steps0 = await asyncio.to_thread(step_count, env)
         child = task.with_data(drums_steps=steps0, drums_turn_cap=self.config.agent.max_turns,
+            drums_transcript=self.config.transcript,
             prompt=_first_message(task.data.osworld.get("instruction", ""), png, obs, tools.style),
             system_prompt=(S.build_system_prompt() if tools.style == "scalecua" else
                            (HYBRID_PROMPT if tools.style == "hybrid" else SYSTEM_PROMPT).format(w=obs[0], h=obs[1])),
@@ -299,6 +328,10 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         t0 = time.time()
         trace = await agents.agent.run(child)
         d = trace.info.get("drums") or {}
+        if self.config.transcript:
+            st = getattr(trace, "state", None)    # from the state, so an errored episode keeps its actions too
+            extra = {**extra, "transcript": list(getattr(st, "transcript", None) or d.get("transcript") or []),
+                     "turn_tokens": turn_tokens(trace)}
         self._record({"t": time.time(), "episode_id": episode_id, "task": task.data.osworld.get("id"), "env": env.id,
                       "parent": parent, "drums_episode": env.record.get("episode"), "valid": d.get("valid"),
                       "verdict": d.get("verdict"), "failed_gates": d.get("failed_gates"), "score": d.get("score"),
