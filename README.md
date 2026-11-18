@@ -139,6 +139,14 @@ With `fork_n = N`, the N child traces of an episode form the comparison group: u
 [examples/rl-drums-fork.toml](examples/rl-drums-fork.toml); `uv run rl @ examples/rl-drums-fork.toml --dry-run`
 validates it on any machine.
 
+### Train on your own GPUs
+
+[docs/train-on-your-gpus.md](docs/train-on-your-gpus.md) runs full-parameter GRPO with prime-rl on GPUs you control,
+with Drums serving the desktops. It covers two setups with one config file (`templates/rl-config.toml`) and one runner:
+your own Modal account (`templates/modal/`) or any 8-GPU Linux machine (`templates/gpu-box/`). The recipe is our D1
+run's (Qwen3.5-27B, 8 GPUs, 128 desktops). The guide gives the costs and step times that run measured, the pitfalls it
+hit, and how to size a task pool so GRPO keeps learning.
+
 ## How it works
 
 ```mermaid

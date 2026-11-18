@@ -1,0 +1,22 @@
+# The standalone vLLM server for evaluation and the step-0 scan (`uv run --no-sync inference @ <rendered file>`).
+# Same serving settings as the recipe's [inference.vllm]. Rendered by drums_rl.py (the placeholder strings between @ signs).
+output_dir = "@OUTPUT_DIR@"
+router = "None"                     # one engine, no router: the server itself listens on server.port
+
+[server]
+port = 8000
+
+[vllm]
+model = "@MODEL@"                   # the base repo id, or an exported checkpoint directory
+dtype = "bfloat16"
+max_model_len = 32768
+tensor_parallel_size = "@GPUS@"
+gpu_memory_utilization = 0.85
+enable_prefix_caching = true
+tool_call_parser = "qwen3_coder"
+reasoning_parser = "qwen3"
+mm_processor_cache_gb = 32
+
+[deployment]
+type = "single_node"
+gpus_per_node = "@GPUS@"

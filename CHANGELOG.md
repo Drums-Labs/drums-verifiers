@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Train on your own GPUs: `templates/` and `docs/train-on-your-gpus.md`. One config file (`templates/rl-config.toml`:
+  model, GPU type and split, Drums secret, task set, budget, prices, image pins) drives one runner
+  (`templates/common/drums_rl.py`). The runner works in your own Modal account (`templates/modal/app.py`: volumes, a
+  Secret, GPU fallback lists, a start deadline that cancels a launch with no container, retries that resume) or on
+  any 8-GPU Linux machine (`templates/gpu-box/run.sh`, the same image under Docker).
+  - Commands: download (writes `refs/main` for a pinned revision), check, scan (step-0 rates and the pool report),
+    smoke, train, evaluate, export, spend.
+  - `train` moves partial checkpoint directories aside before it resumes, and stops itself at the budget (a GPU-spend
+    ledger across all launches).
+  - The prime-rl recipe (`templates/common/prime-rl-drums.toml`) is D1's validated config (IPO loss, no reference KL)
+    plus throughput settings to be validated on D2.
+  - `drums_rl.py pool-report` reads the expected zero-advantage share from a record file.
+
 ## 0.2.2 - 2026-11-16
 
 - Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy
