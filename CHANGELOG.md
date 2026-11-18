@@ -11,6 +11,16 @@
   (cache reads included), cached and completion tokens and seconds of each model call; the token fields are null when
   the client reports no usage. The action list is also in `trace.info["drums"]["transcript"]`. On by default;
   `env.transcript = false` gives the 0.2.2 rows.
+- Throughput options for the drums-chat screenshot window (A-39 correction), all off by default: the default request
+  is byte-identical to 0.2.2's.
+  - `env.agent.harness.screenshots_full` (default: `images_to_keep`): the newest screenshots sent at full size.
+  - `screenshots_total` (default: `screenshots_full`): screenshots kept at all. Those older than `screenshots_full`
+    are downscaled by `downscale` (default 0.5, a width and height factor; 1 = full size).
+  - `screenshots_stride` (default 1): move the window in steps of N screenshots, so on N - 1 turns of N the request
+    is the previous one plus the new messages, byte for byte, and vLLM's prefix cache covers the whole history.
+  - The system prompt and the first user message (task text and first screenshot) are never changed. The chat
+    program declares Pillow only when it downscales. The window is its own module (`src/drums_chat/window.py`),
+    embedded verbatim in the chat program.
 
 ## 0.2.2 - 2026-11-16
 

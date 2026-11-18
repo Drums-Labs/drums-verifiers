@@ -164,6 +164,11 @@ flowchart LR
    Three tool styles: `drums` (one tool per action, pixel coordinates), `scalecua` (the ScaleCUA agent's single
    `computer` tool and prompt, for ScaleCUA checkpoints) and `hybrid` (the GUI tools plus shell, file and app tools on
    the same desktop).
+   Before every model call the drums-chat harness picks which screenshots of the history are sent: by default the
+   newest 5 (`env.agent.harness.images_to_keep`). For throughput, `screenshots_full` / `screenshots_total` /
+   `downscale` send the newest few at full size and a few older ones downscaled, and `screenshots_stride` moves that
+   window in steps, so most requests extend the previous one byte for byte and the inference server's prefix cache
+   hits (`src/drums_chat/window.py`; see `docs/train-on-your-gpus.md`).
 3. `DrumsTask.task_success` calls `env.verify()`: drumsd runs the task's checker outside the desktop and returns the
    score, the gate verdict and the reward audit. The environment is closed after scoring, and fork states are deleted.
 

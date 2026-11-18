@@ -213,3 +213,12 @@ def test_transcript_is_off_with_the_flag(servers):
 def test_env_failure_keeps_the_transcript_up_to_the_failure(servers):
     rows = run_eval(*servers, "crash_transcript", crash=True)
     assert rows[0]["transcript"] and rows[0]["transcript"][-1]["status"] == "env_failed"
+
+
+def test_throughput_window_runs_end_to_end(servers):
+    """The chat program with downscaled and strided screenshots (it then declares Pillow) plays and scores as before."""
+    rows = run_eval(*servers, "window", "-r", "2", "--env.agent.harness.screenshots-full", "1",
+                    "--env.agent.harness.screenshots-total", "3", "--env.agent.harness.downscale", "0.5",
+                    "--env.agent.harness.screenshots-stride", "2")
+    assert len(rows) == 2 and all(r["valid"] and r["ok"] for r in rows)
+    assert sorted(r["reward"] for r in rows) == [0.0, 1.0]
