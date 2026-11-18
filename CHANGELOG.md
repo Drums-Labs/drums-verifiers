@@ -33,6 +33,10 @@
   - The prime-rl recipe (`templates/common/prime-rl-drums.toml`) is D1's validated config (IPO loss, no reference KL)
     plus throughput settings to be validated on D2.
   - `drums_rl.py pool-report` reads the expected zero-advantage share from a record file.
+- A task can name its lab verifier by hash (drumsd's verifier sandbox, Drums-Labs/drumsd#27).
+  - `python -m drums_tasks.build --verifier-ref hash` adds `evaluator.verifier_sha256` (and the redundant checker's) to every task. The default `name` keeps the bytes.
+  - `index.json` records `verifier_sha256` and `verifier_ref`.
+  - `drums_tasks.upload.ensure_verifiers` asks the host for each hash a task set names and uploads the local file when it is missing (`POST /v1/verifiers`). `drums_tasks.validate` runs it before the first create (`--verifier FILE` for your own). `DrumsEnv` runs it before a task's first create, once per host (`verifier_files` in the env config).
 
 ## 0.2.2 - 2026-11-16
 
