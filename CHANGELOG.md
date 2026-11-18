@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.3.0 - proposed, not released
+## 0.3.0 - 2026-11-18
 
 The post-D1 fixes integrated on one branch (drums-verifiers #12 to #18). Not on PyPI and not tagged; the GPU templates
 install it by commit (`[image] drums_verifiers` in `templates/rl-config.toml`).
