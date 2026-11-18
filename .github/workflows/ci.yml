@@ -32,3 +32,16 @@ jobs:
         run: ruff check .
       - name: Tests (unit, and vf-run end to end against the fake drumsd; nothing needs a Drums host)
         run: python -m pytest tests
+
+  # A-40: pip-audit on what CI installs (pip install -e '.[test]' resolves the same set). Fails on any advisory not in
+  # .pip-audit-ignore. The factory pins are audited report-only (see .github/workflows/dependency-audit.yml).
+  audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: .github/scripts/pip-audit.sh '.[test]'

@@ -7,6 +7,7 @@ import zipfile
 from ..core import FIXED_ZIP_TIME, HOME, Spec, office_write, phrase, pick, sha256, sh, sleep, write_file_steps
 from ..data import DATASETS, PRODUCTS, csv_bytes, docx_bytes, html_page, sentence, table, xlsx_bytes
 from .apps import BASE, SITE, chrome_open, site_setup
+from .lib import digest
 
 
 def calc_to_text(rng, idx):
@@ -38,7 +39,7 @@ def calc_to_text(rng, idx):
                              ("opposite_end", write_file_steps(out, (order[-1][0] + "\n").encode())),
                              ("value_not_label", write_file_steps(out, (f"{order[0][ci]}\n").encode()))],
                 open_cmd=["libreoffice", "--calc", path], allow=[out], settle_s=8, multi_app=True,
-                params={"dataset": ds, "column": num, "highest": hi})
+                params={"dataset": ds, "column": num, "highest": hi, "data": digest(rows)})
 
 
 def web_to_csv(rng, idx):
@@ -81,7 +82,7 @@ def doc_to_sheet(rng, idx):
                              ("missing_header", office_write(out, xlsx_bytes([("Sheet1", items)]), "xlsx")),
                              ("missing_item", office_write(out, xlsx_bytes([("Sheet1", rows[:-1])]), "xlsx"))],
                 open_cmd=["libreoffice", "--writer", doc], allow=[out], settle_s=8, multi_app=True,
-                params={"items": len(items)})
+                params={"items": len(items), "doc": doc, "data": digest(items)})
 
 
 def sheet_to_doc(rng, idx):
@@ -103,7 +104,7 @@ def sheet_to_doc(rng, idx):
                 near_misses=[("wrong_total", office_write(doc, docx_bytes(paras + [f"Total amount: {total - rows[-1][2]}"]), "docx")),
                              ("count_not_sum", office_write(doc, docx_bytes(paras + [f"Total amount: {len(rows) - 1}"]), "docx"))],
                 open_cmd=["libreoffice", "--writer", doc], allow=[doc], settle_s=8, multi_app=True,
-                params={"rows": len(rows) - 1, "total": total})
+                params={"rows": len(rows) - 1, "total": total, "data": digest([rows, paras])})
 
 
 def download_extract(rng, idx):

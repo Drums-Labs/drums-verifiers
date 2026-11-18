@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ..core import HOME, Spec, lo_convert, office_write, phrase, pick, write_file_steps
 from ..data import TOPICS, WORDS, docx_bytes, pptx_bytes, sentence
+from .lib import digest
 
 DIRS = [f"{HOME}/Documents", f"{HOME}/Desktop"]
 NAMES = ["memo", "minutes", "notes", "plan", "letter", "brief", "draft", "update", "agenda", "summary"]
@@ -59,7 +60,8 @@ def replace_word(rng, idx):
                 check=_check(path, want), oracle=_w(path, want),
                 near_misses=[("first_only", _w(path, first)), ("wrong_case", _w(path, upper)),
                              ("replaced_other_word", _w(path, [p.replace(old, old + "s") for p in paras]))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"old": old, "new": new, "n": counts[old]})
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"old": old, "new": new, "n": counts[old], "path": path,
+                                                                         "text": digest(paras)})
 
 
 def append_para(rng, idx):
@@ -76,7 +78,8 @@ def append_para(rng, idx):
                 check=_check(path, paras + [new]), oracle=_w(path, paras + [new]),
                 near_misses=[("inserted_first", _w(path, [new] + paras)), ("typo", _w(path, paras + [typo])),
                              ("replaced_last", _w(path, paras[:-1] + [new]))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"n": len(paras)})
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"n": len(paras), "path": path, "new": new,
+                                                                         "text": digest(paras)})
 
 
 def delete_para(rng, idx):
@@ -95,8 +98,9 @@ def delete_para(rng, idx):
         f=path.replace(HOME, "~"), s=start)
     return Spec(family="writer_delete_para", app="libreoffice_writer", instruction=instr, files={path: docx_bytes(paras)},
                 check=_check(path, want), oracle=_w(path, want),
-                near_misses=[("deleted_other", _w(path, other)), ("partial_delete", _w(path, half))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"k": k, "n": len(paras)})
+                near_misses=[("deleted_other", _w(path, other)), ("partial_delete", _w(path, half)),
+                             ("deleted_two", _w(path, [p for i, p in enumerate(paras) if i not in (k, j)]))],
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"k": k, "n": len(paras), "path": path, "text": digest(paras)})
 
 
 def bold_phrase(rng, idx):
@@ -140,8 +144,9 @@ def bold_phrase(rng, idx):
     return Spec(family="writer_bold", app="libreoffice_writer", instruction=instr, files={path: db(paras)},
                 check={"kind": "docx_bold", "path": path, "paragraphs": paras, "bold": phrase_},
                 oracle=_w(path, paras, bold=phrase_),
-                near_misses=[("italic_instead", italic(paras, phrase_)), ("bolded_other", _w(path, paras, bold=other_phrase))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"phrase": phrase_})
+                near_misses=[("italic_instead", italic(paras, phrase_)), ("bolded_other", _w(path, paras, bold=other_phrase)),
+                             ("bolded_whole_paragraph", _w(path, paras, bold=paras[k]))],
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"phrase": phrase_, "path": path, "text": digest(paras)})
 
 
 def export_pdf(rng, idx):
@@ -167,7 +172,8 @@ def export_pdf(rng, idx):
                 oracle=[lo_convert(path, "pdf", d)],
                 near_misses=[("wrong_document", wrong_doc), ("wrong_folder", [lo_convert(path, "pdf", other_dir)]),
                              ("not_a_pdf", write_file_steps(out, "\n".join(paras).encode()))],
-                open_cmd=_open(path), allow=[out], settle_s=8, params={"n": len(paras)})
+                open_cmd=_open(path), allow=[out], settle_s=8, params={"n": len(paras), "path": path,
+                                                                        "text": digest([paras, other_paras])})
 
 
 def heading(rng, idx):
@@ -183,8 +189,9 @@ def heading(rng, idx):
                 files={path: docx_bytes(paras, heading=old)},
                 check=_check(path, paras, heading=new), oracle=_w(path, paras, heading=new),
                 near_misses=[("appended_not_replaced", _w(path, paras, heading=f"{old} {new}")),
-                             ("body_changed_instead", _w(path, [new] + paras[1:], heading=old))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"old": old, "new": new})
+                             ("body_changed_instead", _w(path, [new] + paras[1:], heading=old)),
+                             ("new_line_added_old_kept", _w(path, [new] + paras, heading=old))],
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"old": old, "new": new, "path": path, "text": digest(paras)})
 
 
 # ------------------------------------------------------------------------------------------------ Impress
@@ -227,8 +234,10 @@ def slide_title(rng, idx):
         f=path.replace(HOME, "~"), o=ORD[k], t=slides[k][0], n=new, k1=k + 1)
     return Spec(family="impress_title", app="libreoffice_impress", instruction=instr, files={path: pptx_bytes(slides)},
                 check=_pcheck(path, want), oracle=_p(path, want),
-                near_misses=[("wrong_slide", _p(path, other)), ("wrong_case", _p(path, typo))],
-                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"k": k, "n": len(slides)})
+                near_misses=[("wrong_slide", _p(path, other)), ("wrong_case", _p(path, typo)),
+                             ("title_appended", _p(path, [((t + " " + new) if i == k else t, b) for i, (t, b) in enumerate(slides)]))],
+                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"k": k, "n": len(slides), "path": path, "title": new,
+                                                                          "slides": digest(slides)})
 
 
 def delete_slide(rng, idx):
@@ -245,8 +254,10 @@ def delete_slide(rng, idx):
         f=path.replace(HOME, "~"), t=slides[k][0], k1=k + 1)
     return Spec(family="impress_delete_slide", app="libreoffice_impress", instruction=instr,
                 files={path: pptx_bytes(slides)}, check=_pcheck(path, want), oracle=_p(path, want),
-                near_misses=[("deleted_other", _p(path, other)), ("cleared_not_deleted", _p(path, cleared))],
-                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"k": k, "n": len(slides)})
+                near_misses=[("deleted_other", _p(path, other)), ("cleared_not_deleted", _p(path, cleared)),
+                             ("deleted_two", _p(path, [s for i, s in enumerate(slides) if i not in (k, j)]))],
+                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"k": k, "n": len(slides), "path": path,
+                                                                          "slides": digest(slides)})
 
 
 def add_slide(rng, idx):
@@ -263,8 +274,10 @@ def add_slide(rng, idx):
     return Spec(family="impress_add_slide", app="libreoffice_impress", instruction=instr,
                 files={path: pptx_bytes(slides)}, check=_pcheck(path, want), oracle=_p(path, want),
                 near_misses=[("wrong_position", _p(path, wrong_pos)),
-                             ("title_typo", _p(path, [(t + "." if t == new else t, b) for t, b in want]))],
-                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"at_end": at_end, "n": len(slides)})
+                             ("title_typo", _p(path, [(t + "." if t == new else t, b) for t, b in want])),
+                             ("first_title_replaced", _p(path, [(new, slides[0][1])] + slides[1:]))],
+                open_cmd=_iopen(path), allow=[path], settle_s=9, params={"at_end": at_end, "n": len(slides), "path": path, "title": new,
+                                                                          "slides": digest(slides)})
 
 
 FAMILIES = {"writer_replace": (replace_word, 60), "writer_append": (append_para, 50), "writer_delete_para": (delete_para, 50),

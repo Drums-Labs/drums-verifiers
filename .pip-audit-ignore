@@ -1,0 +1,4 @@
+# Accepted pip-audit advisories (A-40). One per line: <advisory id>  <review-by YYYY-MM-DD>  <reason>
+# An entry past its review date fails the audit. Empty: nothing is accepted today.
+# The factory pins (t6/requirements-factory.txt, pillow==11.0.0) are audited report-only, not through this file:
+# they must equal drumsd's checker venv (install/osw-requirements.lock) and move with it.

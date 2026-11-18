@@ -11,6 +11,9 @@ failed", never a made-up observation.
 Run as a module: `python -m drums_verifiers.tools` (verifiers launches it per rollout)."""
 
 import asyncio
+import functools
+import inspect
+import json
 import time
 from typing import Annotated, Literal
 
@@ -32,6 +35,30 @@ class DrumsState(vf.State):
     """drumsd quarantined the env mid-episode (a gate failed, e.g. a restored process exited within 5 s): the episode is
     invalid, not broken; the task drops it."""
     action_s: float = 0.0
+    transcript: list[dict] = []
+    """One entry per tool call, in order (when the env's `transcript` flag is on): tool, arguments (JSON, cut to
+    ARGS_MAX characters), status, latency_s (the whole call: action, pause and screenshot), t (unix time at the end)."""
+
+
+ARGS_MAX = 200
+"""Characters of a tool call's JSON arguments kept in the transcript."""
+
+
+def call_status(before: tuple, after: tuple, result) -> str:
+    """What a tool call did, from the state counters around it and its result: ok, invalid (the model's arguments were
+    refused), env_failed, quarantined, skipped (the env had stopped earlier; nothing ran) or no_action."""
+    (inv0, infra0, quar0), (inv1, infra1, quar1) = before, after
+    if quar1 and not quar0:
+        return "quarantined"
+    if infra1 and not infra0:
+        return "env_failed"
+    if inv1 > inv0:
+        return "invalid"
+    if isinstance(result, str) and result.startswith("The environment stopped earlier"):
+        return "skipped"
+    if isinstance(result, str) and result.endswith(": no action."):
+        return "no_action"
+    return "ok"
 
 
 class ComputerConfig(vf.ToolsetConfig):
@@ -54,7 +81,35 @@ class ComputerConfig(vf.ToolsetConfig):
 class DesktopToolset(vf.Toolset[ComputerConfig, DrumsState]):
     """The env binding and the act -> wait -> screenshot step shared by both tool styles."""
 
+    def _with_state(self, fn):
+        """Every tool call is also appended to the rollout's transcript (state.transcript), inside the state sync."""
+        name = getattr(fn, "tool_name", None) or fn.__name__
+        tool = f"{self.server_name}_{name}" if self.server_name else name
+
+        @functools.wraps(fn)
+        async def logged(*args, **kwargs):
+            if not getattr(self, "transcript_on", True):
+                return await fn(*args, **kwargs)
+            st = self.state
+            before = (st.invalid_actions, st.infra_error, st.quarantined)
+            t0, status, result = time.monotonic(), "error", None
+            try:
+                result = await fn(*args, **kwargs)
+                st = self.state
+                status = call_status(before, (st.invalid_actions, st.infra_error, st.quarantined), result)
+                return result
+            finally:
+                try:
+                    a = json.dumps(kwargs, default=str, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    a = str(kwargs)
+                self.state.transcript.append({"tool": tool, "args": a[:ARGS_MAX], "status": status,
+                                              "latency_s": round(time.monotonic() - t0, 3), "t": round(time.time(), 3)})
+        logged.__signature__ = inspect.signature(fn)
+        return super()._with_state(logged)
+
     async def setup_task(self, task) -> None:
+        self.transcript_on = bool(getattr(task, "drums_transcript", True))
         self.env_id = getattr(task, "drums_env_id", None)
         self.env = None
         self.screen = None

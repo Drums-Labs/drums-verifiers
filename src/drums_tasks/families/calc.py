@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ..core import HOME, Spec, lo_convert, office_write, phrase, pick
 from ..data import DATASETS, csv_bytes, table, xlsx_bytes
+from .lib import digest
 
 DIRS = [f"{HOME}/Documents", f"{HOME}/Desktop"]
 AGG = {"sum": sum, "maximum": max, "minimum": min, "average": lambda v: sum(v) / len(v), "count": len}
@@ -67,7 +68,8 @@ def aggregate(rng, idx):
     return Spec(family="calc_aggregate", app="libreoffice_calc", instruction=instr, files={path: xlsx_bytes([("Sheet1", rows)])},
                 check={"kind": "xlsx_cells", "path": path, "sheet": None, "cells": {**base, target: want}, "tol": 0.01},
                 oracle=oracle, near_misses=nm, open_cmd=_open(path), allow=[path], settle_s=8,
-                params={"dataset": ds, "rows": len(rows) - 1, "agg": agg, "column": colname, "target": target})
+                params={"dataset": ds, "rows": len(rows) - 1, "agg": agg, "column": colname, "target": target,
+                        "path": path, "value": want, "data": digest(rows)})
 
 
 def _unique_col(rows, cols):
@@ -117,7 +119,7 @@ def sort_rows(rng, idx):
     return Spec(family="calc_sort", app="libreoffice_calc", instruction=instr, files={path: xlsx_bytes([("Sheet1", rows)])},
                 check={"kind": "xlsx_table", "path": path, "sheet": None, "rows": want, "tol": 1e-6},
                 oracle=_write(path, want), near_misses=nm, open_cmd=_open(path), allow=[path], settle_s=8,
-                params={"dataset": ds, "rows": len(rows) - 1, "key": key, "desc": desc})
+                params={"dataset": ds, "rows": len(rows) - 1, "key": key, "desc": desc, "path": path, "data": digest(rows)})
 
 
 OPS = {"product": ("multiplied by", lambda a, b: a * b), "sum": ("plus", lambda a, b: a + b),
@@ -156,7 +158,7 @@ def new_column(rng, idx):
                 files={path: xlsx_bytes([("Sheet1", rows)])},
                 check={"kind": "xlsx_table", "path": path, "sheet": None, "rows": want, "tol": 1e-6},
                 oracle=_write(path, want), near_misses=nm, open_cmd=_open(path), allow=[path], settle_s=8,
-                params={"dataset": ds, "a": a, "b": b, "op": op})
+                params={"dataset": ds, "a": a, "b": b, "op": op, "name": name, "path": path, "data": digest(rows)})
 
 
 SHEETS = ["Data", "Summary", "Notes", "Q1", "Q2", "Archive", "Raw", "Input", "Budget", "Plan"]
@@ -186,8 +188,11 @@ def rename_sheet(rng, idx):
     return Spec(family="calc_rename_sheet", app="libreoffice_calc", instruction=instr,
                 files={path: xlsx_bytes(sheets)},
                 check={"kind": "xlsx_sheetnames", "path": path, "names": want},
-                oracle=wb(want), near_misses=[("wrong_sheet", wb(wrong_sheet)), ("wrong_spelling", wb(typo))],
-                open_cmd=_open(path), allow=[path], settle_s=8, params={"sheets": names, "k": k, "new": new})
+                oracle=wb(want), near_misses=[("wrong_sheet", wb(wrong_sheet)), ("wrong_spelling", wb(typo)),
+                             ("sheet_added_not_renamed", office_write(path, xlsx_bytes(
+                                 [(n2, s[1]) for n2, s in zip(names, sheets)] + [(new, [["note"]])]), "xlsx"))],
+                open_cmd=_open(path), allow=[path], settle_s=8, params={"sheets": names, "k": k, "new": new, "path": path,
+                                                                          "data": digest(rows)})
 
 
 def delete_rows(rng, idx):
@@ -217,7 +222,7 @@ def delete_rows(rng, idx):
                 files={path: xlsx_bytes([("Sheet1", rows)])},
                 check={"kind": "xlsx_table", "path": path, "sheet": None, "rows": want, "tol": 1e-6},
                 oracle=_write(path, want), near_misses=nm, open_cmd=_open(path), allow=[path], settle_s=8,
-                params={"dataset": ds, "column": colname, "op": op, "threshold": thr})
+                params={"dataset": ds, "column": colname, "op": op, "threshold": thr, "path": path, "data": digest(rows)})
 
 
 def export_csv(rng, idx):
@@ -241,7 +246,7 @@ def export_csv(rng, idx):
                 files={path: xlsx_bytes([("Sheet1", rows)])},
                 check={"kind": "csv_table", "path": out, "rows": rows, "tol": 1e-6},
                 oracle=[lo_convert(path, "csv", d)], near_misses=nm, open_cmd=_open(path),
-                allow=[out, path], settle_s=8, params={"dataset": ds, "out": out})
+                allow=[out, path], settle_s=8, params={"dataset": ds, "out": out, "path": path, "data": digest(rows)})
 
 
 FAMILIES = {"calc_aggregate": (aggregate, 90), "calc_sort": (sort_rows, 70), "calc_new_column": (new_column, 70),

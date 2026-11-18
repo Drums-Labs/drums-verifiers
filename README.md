@@ -139,6 +139,14 @@ With `fork_n = N`, the N child traces of an episode form the comparison group: u
 [examples/rl-drums-fork.toml](examples/rl-drums-fork.toml); `uv run rl @ examples/rl-drums-fork.toml --dry-run`
 validates it on any machine.
 
+### Train on your own GPUs
+
+[docs/train-on-your-gpus.md](docs/train-on-your-gpus.md) runs full-parameter GRPO with prime-rl on GPUs you control,
+with Drums serving the desktops. It covers two setups with one config file (`templates/rl-config.toml`) and one runner:
+your own Modal account (`templates/modal/`) or any 8-GPU Linux machine (`templates/gpu-box/`). The recipe is our D1
+run's (Qwen3.5-27B, 8 GPUs, 128 desktops). The guide gives the costs and step times that run measured, the pitfalls it
+hit, and how to size a task pool so GRPO keeps learning.
+
 ## How it works
 
 ```mermaid
@@ -164,6 +172,11 @@ flowchart LR
    Three tool styles: `drums` (one tool per action, pixel coordinates), `scalecua` (the ScaleCUA agent's single
    `computer` tool and prompt, for ScaleCUA checkpoints) and `hybrid` (the GUI tools plus shell, file and app tools on
    the same desktop).
+   Before every model call the drums-chat harness picks which screenshots of the history are sent: by default the
+   newest 5 (`env.agent.harness.images_to_keep`). For throughput, `screenshots_full` / `screenshots_total` /
+   `downscale` send the newest few at full size and a few older ones downscaled, and `screenshots_stride` moves that
+   window in steps, so most requests extend the previous one byte for byte and the inference server's prefix cache
+   hits (`src/drums_chat/window.py`; see `docs/train-on-your-gpus.md`).
 3. `DrumsTask.task_success` calls `env.verify()`: drumsd runs the task's checker outside the desktop and returns the
    score, the gate verdict and the reward audit. The environment is closed after scoring, and fork states are deleted.
 
@@ -175,17 +188,45 @@ directory of `<id>.json` files (`tasks_dir`).
 
 The task factory (`drums_tasks`) generates tasks in the same format with a `drums_verifier` evaluator: a function in
 the lab verifier `drums_t6.py`, its options, a redundant checker, and a scope manifest (the sha256 of every seeded file
-under the task's roots, plus the globs the task is allowed to change). 40 families across seven apps; the default
-build is 1,928 tasks with 5,437 near-miss solutions. Everything is a function of `(seed, family, index)`:
+under the task's roots, plus the globs the task is allowed to change). 51 families across seven apps; the default
+build is 2,984 tasks with 10,352 near-miss solutions. Which families are worth training on, and why, is in
+[docs/task-library.md](docs/task-library.md); the D2 pool proposal is [docs/d2-pool.md](docs/d2-pool.md). Everything is a function of `(seed, family, index)`:
 
 ```bash
 python -m drums_tasks.build --seed 1 --out /tmp/ts --check
 ```
 
 writes `tasks.jsonl` (what an environment is created with; no solutions inside), `solutions.jsonl` (the scripted
-oracle, the near misses and the scope probe of every task), `drums_t6.py` (installed as root into
-`/etc/drums/verifiers/` on the host) and `index.json` (counts and the sha256 of each file). `--check` builds twice and
-fails on any byte difference. Only `tasks.jsonl` and the verifier go to a host; the solutions are for the validator
+oracle, the near misses and the scope probe of every task), `drums_t6.py` (drumsd 0.2.2 ships it; on an older host
+install it as root into `/etc/drums/verifiers/`) and `index.json` (counts, the sha256 of each file, and
+`verifier_sha256`). `--check` builds twice and fails on any byte difference.
+
+`--verifier-ref hash` also names the verifier by its sha256 in every task (`evaluator.verifier_sha256`). drumsd then
+runs it in its verifier sandbox (no network, no host files, an unprivileged uid, CPU, memory and wall budgets) and
+refuses to create an env whose verifier hash it does not have (422 `verifier_missing`). `drums_tasks.validate` and
+`DrumsEnv` upload a missing verifier before the first create: the bundled `drums_t6` always, your own with
+`--verifier FILE` (validate) or `verifier_files` (DrumsEnv config). The default `--verifier-ref name` writes the same
+bytes as before.
+
+The check kinds `drums_t6` (VERSION 1) has, which is what a template can ask for (A-15). A kind that is not listed
+needs a new verifier version, which means new bytes and a new hash:
+
+| kind | checks |
+|---|---|
+| `text_file` | a text file's content (modes `exact_strip`, `lines`, `lines_set`, `number`, `contains_all`) |
+| `files_state` | files exist with a sha256, are absent, directories exist, a directory's exact listing |
+| `zip_members` | an archive's member names and contents |
+| `xlsx_cells`, `xlsx_table`, `xlsx_sheetnames` | cells (numbers within `tol`), a table, sheet names |
+| `csv_table` | a CSV's rows |
+| `docx_paragraphs`, `docx_bold` | paragraph text; bold runs. This is the only character-style check: italic and highlight are not checkable yet |
+| `pdf_text` | a PDF's text |
+| `pptx_titles` | slide titles |
+| `image` | an image matches an expected one (size, pixels, format) |
+| `chrome_tabs`, `chrome_bookmarks` | open tabs, bookmarks |
+| `json_keys` | keys of a JSON (or JSONC) settings file |
+| `python_tests` | a test script passes in the desktop |
+| `sqlite_rows` | rows of a SQLite query |
+| `all` | every sub-check passes (multi-step and multi-app tasks) | Only `tasks.jsonl` and the verifier go to a host; the solutions are for the validator
 (`python -m drums_tasks.validate`), which forks every task into no-op, oracle, near misses and scope probe on a live
 host and accepts a task only when the checker separates them. The generator is deterministic, so anyone with the code
 and a seed can rebuild a task set and its solutions; treat the seed of an evaluation set accordingly.
@@ -225,7 +266,9 @@ checker error, action counts, and the reward audit drumsd attached:
 
 The audit never changes `score` or `valid`; this package drops invalid episodes and leaves the use of `trusted` and
 the flags to the trainer. `DRUMS_RECORD=path.jsonl` writes one line per scored trace (environment, parent, verdict,
-failed gates, score, reward handed out, audit flags, `trusted`, drop reason, timings) for offline audit.
+failed gates, score, reward handed out, audit flags, `trusted`, drop reason, timings) for offline audit, plus the
+episode's action transcript (`transcript`: tool, arguments cut to 200 characters, status, latency) and per-turn token
+counts (`turn_tokens`); `env.transcript = false` turns those two off.
 
 ## Vendored code: SCALE-CUA
 
