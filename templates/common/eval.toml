@@ -1,0 +1,45 @@
+# Offline evaluation and the step-0 scan through DrumsEnv (`uv run --no-sync eval @ <rendered file>`): K episodes per
+# task against the local vLLM server. Same agent settings as the recipe; chat_template_kwargs turns thinking off on this
+# path (it uses the model's chat template over chat completions, not the trainer's renderer). Rendered by drums_rl.py.
+model = "@MODEL@"
+group_size = "@K@"
+output_dir = "@OUTPUT_DIR@"
+dashboard = false
+
+[run]
+name = "@TAG@"
+
+[client]
+base_url = "http://127.0.0.1:8000/v1"
+api_key_var = "DRUMS_RL_UNUSED_API_KEY"   # unset, so verifiers sends "EMPTY"; the local server needs no key
+
+[concurrency]
+min_inflight = "@INFLIGHT@"
+max_inflight = "@INFLIGHT@"
+
+[select]
+shuffle = false
+
+[sampling]
+temperature = 0.8
+max_tokens = 1536
+chat_template_kwargs = { enable_thinking = false }
+
+[monitors]
+prime = "None"
+
+[env]
+timeout.episode = 3600
+
+[[source]]
+name = "@TAG@"
+env.taskset.id = "drums-verifiers"
+env.taskset.tasks_dir = "@TASKS_DIR@"
+env.taskset.task_ids = ["@TASK_IDS@"]
+env.taskset.image = "osworld-ubuntu"
+env.fork_n = 0
+env.max_concurrent_agents = "@INFLIGHT@"
+env.admission_wait_s = 900.0
+env.record_path = "@RECORD_PATH@"
+# @AGENT_LINES@  (drums_rl.py puts the recipe's env.taskset.task.* and env.agent.* lines here, so evaluation runs
+# the agent exactly as training does)

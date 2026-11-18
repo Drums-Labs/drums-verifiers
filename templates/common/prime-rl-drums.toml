@@ -1,0 +1,129 @@
+# prime-rl recipe for Drums desktops: full-parameter GRPO of a VLM on one 8-GPU node, every rollout one Drums desktop.
+#
+# VALIDATED ON D1 SETTINGS; THROUGHPUT SETTINGS TO BE VALIDATED ON D2.
+#   Validated: every key not marked [D2] is what D1 ran for 8 h on 8 x H200 / B200 with prime-rl 167d4c3 and
+#   Qwen3.5-27B (6 optimizer steps; the run was stopped by its time budget). The loss is prime-rl's own: GRPO
+#   advantages with the IPO probability band (eps 0.3) and NO reference-KL term. prime-rl has no KL coefficient and
+#   no PPO ratio clip, so "KL 1e-4, clip 0.2 / 0.28" style settings from other trainers do not apply here.
+#   [D2]: the screenshot window and the higher in-flight floor below are the throughput levers from D1's vLLM log
+#   (prefill about 20x decode, 64% prefix-cache hits, vLLM not saturated, 36 to 80 of 128 episodes in flight). They
+#   have unit tests, not a GPU run; they need drums-verifiers newer than 0.2.2. To run exactly D1's settings, replace
+#   the four env.agent.harness.screenshots_* / downscale lines with `env.agent.harness.images_to_keep = 5` and set
+#   [orchestrator.concurrency] min_inflight = 8.
+#
+# Rendered by templates/common/drums_rl.py: every placeholder string (an upper-case name between two @ signs) is replaced with a value from rl-config.toml (the file
+# stays valid TOML before and after). Run it as `uv run --no-sync rl @ <rendered file>` inside the image.
+
+max_steps = "@MAX_STEPS@"
+seq_len = 32768                     # 15 turns with the screenshot window fit well inside it
+output_dir = "@OUTPUT_DIR@"
+dashboard = false
+
+[run]
+name = "@RUN_NAME@"                 # fixed per config, so a retry resumes the same directory
+
+[model]
+name = "@MODEL@"                    # read from HF_HOME on the weights volume, HF_HUB_OFFLINE=1
+
+[model.vlm]
+freeze_vision_encoder = true        # the language model is fully trained, the vision tower stays frozen
+
+[deployment]
+type = "single_node"
+gpus_per_node = "@GPUS@"
+num_infer_gpus = "@INFER_GPUS@"     # GPUs 0..n-1: vLLM
+num_train_gpus = "@TRAIN_GPUS@"     # the rest: FSDP2 trainer
+
+[ckpt]
+interval = "@CKPT_INTERVAL@"        # 27B: a DCP checkpoint is about 333 GB (fp32 weights + AdamW), about 7 min to write
+keep_last = 2                       # the resume needs the newest COMPLETE one; drums_rl moves partial step dirs aside
+
+[weight_broadcast]
+type = "nccl"
+
+[monitors]
+wandb = "None"
+prime = "None"                      # prime-rl's platform monitor is on by default and needs a PRIME_API_KEY
+
+[trainer.model]
+attn = "auto"                       # FA4 on B200, FA3 on H200
+offload = "none"                    # D1 peak 77 to 104 GiB per trainer GPU on H200 (141 GB); "optimizer" if it OOMs
+optimization_dtype = "float32"
+reduce_dtype = "float32"
+fused_lm_head_token_chunk_size = 1024
+conversion_dir = "@CONVERSION_DIR@"
+
+[trainer.model.ac]
+mode = "full"
+
+[trainer.optim]
+type = "adamw"
+lr = 3e-6
+max_norm = 1.0
+
+[trainer.scheduler]
+type = "constant"
+
+[trainer.loss]
+type = "ipo"                        # prime-rl's default RL loss; the trust region is this probability band
+eps = 0.3
+
+[inference.vllm]
+dtype = "bfloat16"                  # FP8 weights are the next lever after the screenshot window (not validated)
+max_model_len = 32768
+tensor_parallel_size = "@INFER_GPUS@"
+gpu_memory_utilization = 0.85
+enable_prefix_caching = true        # with the window's stride layout most of each request is a cache hit
+tool_call_parser = "qwen3_coder"    # what prime-rl's "auto" resolves for Qwen/Qwen3.5-*
+reasoning_parser = "qwen3"
+mm_processor_cache_gb = 32
+
+[orchestrator]
+batch_size = "@BATCH_SIZE@"         # samples per step = groups x group_size
+max_staleness = 8
+
+[orchestrator.concurrency]
+initial_inflight = "@MAX_INFLIGHT@"
+min_inflight = "@MIN_INFLIGHT@"     # [D2] D1 used 8 and the controller sat at 36 to 80 of 128; the floor is 3/4 of the desktops
+max_inflight = "@MAX_INFLIGHT@"     # = desktops: one episode holds one desktop
+
+[orchestrator.renderer]
+name = "qwen3.5"
+enable_thinking = false             # thinking would spend the completion budget before the action
+
+[orchestrator.train]
+group_size = 8
+
+[orchestrator.train.algo]
+type = "grpo"
+
+[orchestrator.train.select]
+shuffle = true
+seed = "@SEED@"
+
+[orchestrator.train.sampling]
+temperature = 0.8
+max_completion_tokens = 1536
+
+[[orchestrator.train.source]]
+name = "drums"
+env.taskset.id = "drums-verifiers"
+env.taskset.tasks_dir = "@TASKS_DIR@"           # one <id>.json per task (drums_rl writes them from tasks.jsonl)
+env.taskset.task_ids = ["@TASK_IDS@"]
+env.taskset.image = "osworld-ubuntu"
+env.taskset.task.tools.style = "drums"
+env.taskset.task.tools.obs_width = 1280
+env.taskset.task.tools.obs_height = 720
+env.taskset.task.tools.pause_s = 1.0
+env.taskset.task.verify_timeout_s = 600.0
+env.fork_n = 0                                  # one desktop per rollout; group_size makes the groups
+env.max_concurrent_agents = "@MAX_INFLIGHT@"
+env.admission_wait_s = 900.0
+env.record_path = "@RECORD_PATH@"               # one line per scored trace, with the action transcript
+env.agent.harness.id = "drums-chat"
+env.agent.harness.screenshots_full = 3          # [D2] D1: 5 full-size screenshots, window moved every turn
+env.agent.harness.screenshots_total = 6         # [D2]
+env.agent.harness.downscale = 0.5               # [D2] the 3 older ones at 640x360: about a quarter of the vision tokens
+env.agent.harness.screenshots_stride = 3        # [D2] 2 turns of 3 extend the previous request byte for byte
+env.agent.runtime.type = "subprocess"
+env.agent.max_turns = 15
