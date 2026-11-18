@@ -188,8 +188,9 @@ directory of `<id>.json` files (`tasks_dir`).
 
 The task factory (`drums_tasks`) generates tasks in the same format with a `drums_verifier` evaluator: a function in
 the lab verifier `drums_t6.py`, its options, a redundant checker, and a scope manifest (the sha256 of every seeded file
-under the task's roots, plus the globs the task is allowed to change). 40 families across seven apps; the default
-build is 1,928 tasks with 5,437 near-miss solutions. Everything is a function of `(seed, family, index)`:
+under the task's roots, plus the globs the task is allowed to change). 51 families across seven apps; the default
+build is 2,984 tasks with 10,352 near-miss solutions. Which families are worth training on, and why, is in
+[docs/task-library.md](docs/task-library.md); the D2 pool proposal is [docs/d2-pool.md](docs/d2-pool.md). Everything is a function of `(seed, family, index)`:
 
 ```bash
 python -m drums_tasks.build --seed 1 --out /tmp/ts --check

@@ -1,16 +1,19 @@
 """Training and held-out variants of one family from two seeds, with an overlap check:
 
     python -m drums_tasks.split --family NAME --train-seed A --heldout-seed B --out DIR [--train 64] [--heldout 32]
+                                [--start 0]
 
 Writes, in DIR:
-  train/      a full task set (tasks.jsonl, solutions.jsonl, drums_t6.py, index.json): indices 0..train-1 under seed A
-  heldout/    the same for indices train..train+heldout-1 under seed B (so no task id appears in both sets)
+  train/      a full task set (tasks.jsonl, solutions.jsonl, drums_t6.py, index.json): indices start..start+train-1
+              under seed A
+  heldout/    the same for the next `heldout` indices under seed B (so no task id appears in both sets)
   pool.json   family, app, generator version, both seeds and index ranges, the sha256 of each set's files, every task id
               with its split and params, and the overlap report
 
 A held-out variant overlaps a training variant when it has the same instruction text, a seeded file with the same path
 and content, or the same params dict. Any overlap fails the split (exit 1; pool.json still lists the collisions).
-Each set is a normal task set: `drums_tasks.validate --tasks DIR/train` proves it on a host.
+Each set is a normal task set: `drums_tasks.validate --tasks DIR/train` proves it on a host. `--start` moves both index
+ranges, so a later pool of a family never reuses the task ids (and the id-bearing decoy file) of an earlier pool.
 """
 from __future__ import annotations
 
@@ -66,14 +69,16 @@ def _load(d):
     return list(zip(tasks, sols))
 
 
-def split(family: str, train_seed: int, heldout_seed: int, out: str, n_train: int = 64, n_heldout: int = 32) -> dict:
+def split(family: str, train_seed: int, heldout_seed: int, out: str, n_train: int = 64, n_heldout: int = 32,
+          start: int = 0) -> dict:
     if family not in ALL:
         raise SystemExit(f"unknown family {family!r}; known: {', '.join(sorted(ALL))}")
     sets = {}
-    for name, seed, start, n in (("train", train_seed, 0, n_train), ("heldout", heldout_seed, n_train, n_heldout)):
+    for name, seed, first, n in (("train", train_seed, start, n_train),
+                                 ("heldout", heldout_seed, start + n_train, n_heldout)):
         d = os.path.join(out, name)
-        idx = write(d, seed, 1.0, {family}, count=n, start=start)
-        sets[name] = {"seed": seed, "start": start, "count": n, "dir": name, "sha256": idx["sha256"], "records": _load(d)}
+        idx = write(d, seed, 1.0, {family}, count=n, start=first)
+        sets[name] = {"seed": seed, "start": first, "count": n, "dir": name, "sha256": idx["sha256"], "records": _load(d)}
     coll = overlaps(sets["train"]["records"], sets["heldout"]["records"])
     app = sets["train"]["records"][0][1]["app"]
     pool = {"family": family, "app": app, "generator_version": GENERATOR_VERSION,
@@ -97,12 +102,13 @@ def main(argv=None):
     ap.add_argument("--heldout-seed", type=int, required=True)
     ap.add_argument("--train", type=int, default=64)
     ap.add_argument("--heldout", type=int, default=32)
+    ap.add_argument("--start", type=int, default=0, help="the first training index (held-out indices follow)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     if a.train_seed == a.heldout_seed:
         print("the two seeds must differ", file=sys.stderr)
         return 2
-    pool = split(a.family, a.train_seed, a.heldout_seed, a.out, a.train, a.heldout)
+    pool = split(a.family, a.train_seed, a.heldout_seed, a.out, a.train, a.heldout, a.start)
     summary = {k: pool[k] for k in ("family", "app", "generator_version")}
     summary.update({name: {k: pool[name][k] for k in ("seed", "start", "count", "sha256")} for name in ("train", "heldout")},
                    collisions=len(pool["overlap"]["collisions"]))

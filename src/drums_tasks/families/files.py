@@ -7,6 +7,7 @@ import zipfile
 
 from ..core import FIXED_ZIP_TIME, HOME, Spec, phrase, pick, py, sha256, sh, write_file_steps
 from ..data import CITIES, PRODUCTS, WORDS, sentence
+from .lib import seeded
 
 BASES = [f"{HOME}/Documents", f"{HOME}/Desktop", f"{HOME}/Downloads"]
 EXTS = ["txt", "csv", "md", "log", "json"]
@@ -93,7 +94,7 @@ def rename(rng, idx):
                 near_misses=[("renamed_other", [_mv(other, dst)] if other != src else [_cp(src, dst)]),
                              ("copied_not_renamed", [_cp(src, dst)]),
                              ("wrong_extension", [_mv(src, dst + ".bak")])],
-                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"n": len(files)})
+                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"n": len(files), "src": src, "new": new, **seeded(files)})
 
 
 def move_ext(rng, idx):
@@ -116,7 +117,8 @@ def move_ext(rng, idx):
     return Spec(family="files_move_ext", app="files", instruction=instr, files=files,
                 check={**_state(d, want, movers), "dirs": [sub]}, oracle=oracle,
                 near_misses=[("one_left_behind", partial), ("wrong_extension", wrong), ("copied_not_moved", copied)],
-                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"ext": ext, "n": len(files), "moved": len(movers)})
+                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"ext": ext, "n": len(files), "moved": len(movers),
+                                                                       "sub": sub, **seeded(files)})
 
 
 def delete_pattern(rng, idx):
@@ -130,10 +132,11 @@ def delete_pattern(rng, idx):
         "Remove the files beginning with {w}_ from the folder {d}.",
         "In {d}, get rid of all {w}_* files; nothing else should be deleted."], d=d.replace(HOME, "~"), w=word)
     nm = [("one_left", [_rm(*doomed[:-1])] if len(doomed) > 1 else [py("pass")]),
-          ("deleted_extra", [_rm(*doomed, others[0])] if others else [_rm(*doomed), py("pass")])]
+          ("deleted_extra", [_rm(*doomed, others[0])] if others else [_rm(*doomed), py("pass")]),
+          ("moved_not_deleted", [_mkdir(f"{d}/trash")] + [_mv(p, f"{d}/trash/") for p in doomed])]
     return Spec(family="files_delete_pattern", app="files", instruction=instr, files=files,
                 check=_state(d, want, doomed), oracle=[_rm(*doomed)], near_misses=nm,
-                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"word": word, "deleted": len(doomed)})
+                open_cmd=_open(d), allow=[f"{d}/*"], settle_s=3, params={"word": word, "deleted": len(doomed), **seeded(files)})
 
 
 def mkdir_tree(rng, idx):
@@ -158,7 +161,7 @@ def mkdir_tree(rng, idx):
                 near_misses=[("missing_nested", [_mkdir(*dirs[:-1])]),
                              ("nested_in_wrong_folder", [_mkdir(*dirs[:-1], f"{root}/{deep}")]),
                              ("extra_file", [_mkdir(*dirs), py("open(__import__('sys').argv[1],'w').write('x')", f"{root}/notes.txt")])],
-                open_cmd=_open(base), allow=[f"{root}", f"{root}/*"], settle_s=3, params={"subs": subs})
+                open_cmd=_open(base), allow=[f"{root}", f"{root}/*"], settle_s=3, params={"subs": subs, "root": root, "nested": nested, "deep": deep})
 
 
 def _zip_bytes(files):
@@ -189,7 +192,7 @@ def zip_folder(rng, idx):
                 near_misses=[("missing_file", write_file_steps(out, _zip_bytes(some))),
                              ("changed_member", write_file_steps(out, _zip_bytes(altered))),
                              ("moved_not_copied", [sh(f"cd '{d.rsplit('/', 1)[0]}' && zip -q -r -m '{out}' '{d.rsplit('/', 1)[1]}'")])],
-                open_cmd=_open(d.rsplit("/", 1)[0]), allow=[out], settle_s=3, params={"n": len(files)})
+                open_cmd=_open(d.rsplit("/", 1)[0]), allow=[out], settle_s=3, params={"n": len(files), "out": out, **seeded(files)})
 
 
 def count_lines(rng, idx):
@@ -212,7 +215,7 @@ def count_lines(rng, idx):
                 near_misses=[("off_by_one", write_file_steps(ans, f"{val + 1}\n".encode())),
                              ("other_metric", write_file_steps(ans, f"{(len(body.split()) if what == 'lines' else n)}\n".encode())),
                              ("wrong_file_name", write_file_steps(f"{d}/count.text", f"{val}\n".encode()))],
-                open_cmd=_open(d), allow=[ans], settle_s=3, params={"what": what, "value": val})
+                open_cmd=_open(d), allow=[ans], settle_s=3, params={"what": what, "value": val, "target": target, "answer": ans, **seeded(files)})
 
 
 def find_copy(rng, idx):
@@ -235,7 +238,7 @@ def find_copy(rng, idx):
                 near_misses=[("copied_wrong_file", [_mkdir(dest_dir), _cp(other, dest_dir + "/")]),
                              ("moved_not_copied", [_mkdir(dest_dir), _mv(target, dest_dir + "/")]),
                              ("copied_all", [_mkdir(dest_dir)] + [_cp(p, dest_dir + "/") for p in sorted(files)])],
-                open_cmd=_open(d), allow=[dest_dir, f"{dest_dir}/*"], settle_s=3, params={"n": len(files)})
+                open_cmd=_open(d), allow=[dest_dir, f"{dest_dir}/*"], settle_s=3, params={"n": len(files), "target": target, "code": code, "dest": dest_dir, **seeded(files)})
 
 
 def concat(rng, idx):
@@ -257,7 +260,7 @@ def concat(rng, idx):
                 near_misses=[("reversed_order", write_file_steps(out, b"".join(files[p] for p in reversed(parts)))),
                              ("missing_part", write_file_steps(out, b"".join(files[p] for p in parts[:-1]))),
                              ("extra_blank_lines", write_file_steps(out, b"\n".join(files[p] for p in parts)))],
-                open_cmd=_open(d), allow=[out], settle_s=3, params={"k": k})
+                open_cmd=_open(d), allow=[out], settle_s=3, params={"k": k, "parts": parts, **seeded(files)})
 
 
 FAMILIES = {"files_rename": (rename, 50), "files_move_ext": (move_ext, 50), "files_delete_pattern": (delete_pattern, 40),
