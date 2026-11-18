@@ -183,9 +183,16 @@ python -m drums_tasks.build --seed 1 --out /tmp/ts --check
 ```
 
 writes `tasks.jsonl` (what an environment is created with; no solutions inside), `solutions.jsonl` (the scripted
-oracle, the near misses and the scope probe of every task), `drums_t6.py` (installed as root into
-`/etc/drums/verifiers/` on the host) and `index.json` (counts and the sha256 of each file). `--check` builds twice and
-fails on any byte difference. Only `tasks.jsonl` and the verifier go to a host; the solutions are for the validator
+oracle, the near misses and the scope probe of every task), `drums_t6.py` (drumsd 0.2.2 ships it; on an older host
+install it as root into `/etc/drums/verifiers/`) and `index.json` (counts, the sha256 of each file, and
+`verifier_sha256`). `--check` builds twice and fails on any byte difference.
+
+`--verifier-ref hash` also names the verifier by its sha256 in every task (`evaluator.verifier_sha256`). drumsd then
+runs it in its verifier sandbox (no network, no host files, an unprivileged uid, CPU, memory and wall budgets) and
+refuses to create an env whose verifier hash it does not have (422 `verifier_missing`). `drums_tasks.validate` and
+`DrumsEnv` upload a missing verifier before the first create: the bundled `drums_t6` always, your own with
+`--verifier FILE` (validate) or `verifier_files` (DrumsEnv config). The default `--verifier-ref name` writes the same
+bytes as before. Only `tasks.jsonl` and the verifier go to a host; the solutions are for the validator
 (`python -m drums_tasks.validate`), which forks every task into no-op, oracle, near misses and scope probe on a live
 host and accepts a task only when the checker separates them. The generator is deterministic, so anyone with the code
 and a seed can rebuild a task set and its solutions; treat the seed of an evaluation set accordingly.

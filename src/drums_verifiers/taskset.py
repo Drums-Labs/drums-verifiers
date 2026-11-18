@@ -40,6 +40,7 @@ from . import actions as A
 from . import scalecua as S
 from . import sdk
 from .tools import ComputerConfig, ComputerToolset, DrumsState, HybridToolset, ScaleCuaToolset
+from drums_tasks.upload import ensure_verifiers, sources_from_files, task_hashes
 
 SYSTEM_PROMPT = """You control an Ubuntu desktop through tools. Each tool performs one action and returns a screenshot.
 Coordinates are pixels of the screenshot you see ({w}x{h}); (0, 0) is the top-left corner.
@@ -211,6 +212,9 @@ class DrumsEnvConfig(vf.EnvConfig):
     record_path: str | None = None
     """Append one JSON line per scored trace (default $DRUMS_RECORD, else no record)."""
     max_concurrent_agents: int | None = Field(8, ge=1)
+    verifier_files: list[str] = Field(default_factory=list)
+    """Verifier files the tasks name by hash (`evaluator.verifier_sha256`). Before a task's first create the env asks
+    the host for each hash and uploads the local file when it is missing (the bundled drums_t6 is always known)."""
     admission_wait_s: float = Field(900.0, ge=0)
     """drumsd refuses a create or fork with HTTP 429 (`drums.Overloaded`) when the host is near its memory floor; nothing was
     started, so the episode waits and asks again (backoff 2 s doubling to 30 s) for up to this many seconds before it fails.
@@ -275,6 +279,13 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         self._record({"t": time.time(), "episode_id": episode_id, "task": task_id, "cleanup_failed": what,
                       "error": f"{type(err).__name__}: {err}"[:300], "reward": None})
 
+    def _ensure_verifiers(self, c, osw: dict) -> None:
+        """The task's verifiers by hash on the host (uploaded once per process and host)."""
+        cache = getattr(self, "_verifier_cache", None)
+        if cache is None:
+            cache = self._verifier_cache = {}
+        ensure_verifiers(c, [osw], sources_from_files(self.config.verifier_files), cache.setdefault(c.url, {}))
+
     def _record(self, row: dict) -> None:
         eid = row.get("episode_id")
         if eid:
@@ -319,6 +330,8 @@ class DrumsEnv(vf.Env[DrumsEnvConfig]):
         stage = "create"
         try:
             t0 = time.monotonic()
+            if task_hashes(osw):
+                await asyncio.to_thread(self._ensure_verifiers, c, osw)
             parent = await self._admitted(c.create, task.data.drums_image, osw, waits=waits)
             made.append(parent)
             await asyncio.to_thread(parent.wait_valid)

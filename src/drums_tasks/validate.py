@@ -29,6 +29,8 @@ import traceback
 
 import drums
 
+from .upload import ensure_verifiers, sources_from_files
+
 LOCK = threading.Lock()
 
 
@@ -193,6 +195,8 @@ def main(argv=None):
     ap.add_argument("--sample-seed", type=int, default=20261108)
     ap.add_argument("--ids", default="", help="a file of task ids (one per line): run only these")
     ap.add_argument("--token-file", default=os.path.expanduser("~/.drums-token"))
+    ap.add_argument("--verifier", action="append", default=[],
+                    help="a verifier file the tasks name by hash (uploaded if the host lacks it; the bundled drums_t6 is always known)")
     a = ap.parse_args(argv)
     tasks, sols = load(a.tasks)
     only = set(a.only.split(",")) if a.only else None
@@ -221,6 +225,10 @@ def main(argv=None):
     todo = [t for t in pick if t["id"] not in done]
     print(f"{len(pick)} tasks picked, {len(done)} done, {len(todo)} to run, {a.workers} workers", flush=True)
     c = drums.connect(token=open(a.token_file).read().strip())
+    # tasks that name a verifier by hash need it on the host before their first create (else 422 verifier_missing)
+    up = ensure_verifiers(c, todo, sources_from_files(a.verifier))
+    if up:
+        print("verifiers: " + ", ".join(f"{h[:12]} {s}" for h, s in sorted(up.items())), flush=True)
     t0 = time.time()
     n = [0]
 
