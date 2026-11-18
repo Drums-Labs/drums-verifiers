@@ -19,10 +19,10 @@ import sys
 
 from . import GENERATOR_VERSION
 from .core import build_task, canonical, rng_for
-from .families import apps, calc, d1, files, multi, writer
+from .families import apps, calc, d1, files, hidden, medium, multi, recovery, workflow, writer
 
 ALL = {}
-for mod in (calc, writer, files, apps, multi, d1):
+for mod in (calc, writer, files, apps, multi, d1, medium, workflow, hidden, recovery):
     ALL.update(mod.FAMILIES)
 
 
