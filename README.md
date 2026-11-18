@@ -199,7 +199,7 @@ needs a new verifier version, which means new bytes and a new hash:
 
 | kind | checks |
 |---|---|
-| `text_file` | a text file's content (exact, contains, lines) |
+| `text_file` | a text file's content (modes `exact_strip`, `lines`, `lines_set`, `number`, `contains_all`) |
 | `files_state` | files exist with a sha256, are absent, directories exist, a directory's exact listing |
 | `zip_members` | an archive's member names and contents |
 | `xlsx_cells`, `xlsx_table`, `xlsx_sheetnames` | cells (numbers within `tol`), a table, sheet names |
@@ -207,7 +207,7 @@ needs a new verifier version, which means new bytes and a new hash:
 | `docx_paragraphs`, `docx_bold` | paragraph text; bold runs. This is the only character-style check: italic and highlight are not checkable yet |
 | `pdf_text` | a PDF's text |
 | `pptx_titles` | slide titles |
-| `image` | an image's size and pixels |
+| `image` | an image matches an expected one (size, pixels, format) |
 | `chrome_tabs`, `chrome_bookmarks` | open tabs, bookmarks |
 | `json_keys` | keys of a JSON (or JSONC) settings file |
 | `python_tests` | a test script passes in the desktop |
