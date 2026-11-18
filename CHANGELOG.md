@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- The task library (`docs/task-library.md`): a rubric for what makes a computer-use task good for RL (end-state
+  checker with near misses and a no-op that scores 0, a learnable band measured by a K = 2 step-0 scan, lossless
+  params, horizon tiers, named skills, binary reward by default, contamination rules), what each check kind does and
+  does not verify (A-15), and an audit of the 40 existing families: 21 keep, 5 fix, 3 drop, 11 park (writer_bold moves to fix: in 3 to 7 of 96 variants its phrase occurs twice and
+  the oracle scores 0) (Chrome, GIMP and
+  VS Code are not proven on Drums).
+- 11 new families, 96 variants each, all on existing check kinds, each with an oracle, three to five near misses and
+  lossless params: medium-horizon `medium_files_rules`, `medium_calc_pipeline`, `medium_writer_restructure`;
+  multi-app `multi_csv_report`, `multi_letter_fill`; hidden-state `hidden_files_dotfiles`, `hidden_calc_rows`,
+  `hidden_writer_readonly`; recovery (the setup creates the fault) `recover_files_interrupted`, `recover_calc_column`,
+  `recover_writer_steps`. Modules `families/medium.py`, `workflow.py`, `hidden.py`, `recovery.py`, helpers in
+  `lib.py`. None has run on a live desktop yet.
+- `params` is lossless in the 26 pre-D1 families on the apps Drums runs today: each records every drawn parameter and
+  a digest of the drawn content, so the split's three-way overlap check (instruction, file, params) passes for the
+  kept families without skipping the params check. The tasks are byte-identical to 0.2.2 (pinned in
+  `tests/test_library.py`); only `solutions.jsonl` changes.
+- A third near miss for files_delete_pattern, calc_rename_sheet, writer_delete_para, writer_bold, writer_heading,
+  impress_title, impress_delete_slide and impress_add_slide.
+- `drums_tasks.split --start N`: both index ranges start at N, so a later pool of a family never reuses an earlier
+  pool's task ids.
+- `GENERATOR_VERSION` is `t6-factory-3`.
+- The D2 pool proposal (`docs/d2-pool.md`): candidates, difficulty tiers, about 672 training variants over about 14
+  families, held-out by seed for every family plus two whole families for transfer, D1's held-out set as an anchor,
+  and the step-0 scan that decides before the freeze.
+- `tests/test_library.py`: the new families and the kept ones offline (oracle 1, near misses 0, no-op 0 under both
+  checkers; zero overlap at the default seeds; unchanged task bytes).
+
 ## 0.2.2 - 2026-11-16
 
 - Three task families for the D1 study, one per app (`src/drums_tasks/families/d1.py`): `d1_files_collect` (copy

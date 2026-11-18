@@ -50,6 +50,10 @@ python -m pytest tests                             # unit tests + the end-to-end
 
 ## Add a task family
 
+Read [docs/task-library.md](docs/task-library.md) first: the rubric a family must meet to be worth training on
+(verifiable end state, no shortcut, a learnable band, lossless params, a horizon tier, a named skill), what each check
+kind does and does not verify, and the audit of the existing families.
+
 A family is one generator function in a module under `src/drums_tasks/families/`, registered in that module's
 `FAMILIES` dict as `name: (function, count)`. The function takes `(rng, index)` and returns a `Spec`
 (`src/drums_tasks/core.py`). Everything it does must come from `rng` (from `rng_for(seed, family, index)`), so the
