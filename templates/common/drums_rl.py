@@ -72,6 +72,22 @@ def load_config(path: str | Path | None = None) -> dict:
     return cfg
 
 
+PIN_RE = re.compile(r"^drums-verifiers\s*(==\s*\d+\.\d+\.\d+\S*|@\s*git\+https://\S+@[0-9a-f]{40})$")
+
+
+def image_pin_problem(spec: str, environ=None) -> str | None:
+    """None when [image] drums_verifiers names a release (==X.Y.Z) or a full commit sha; else why it is refused.
+    DRUMS_RL_ALLOW_UNPINNED=1 lets an unpinned spec through (a deliberate try, never a study)."""
+    environ = os.environ if environ is None else environ
+    if PIN_RE.match(spec.strip()):
+        return None
+    if environ.get("DRUMS_RL_ALLOW_UNPINNED") == "1":
+        return None
+    why = "still the placeholder PIN_A_COMMIT" if "PIN_A_COMMIT" in spec else "not a release (==X.Y.Z) or a 40-character commit sha"
+    return (f"[image] drums_verifiers = {spec!r} is {why}. Put the commit you run there (see rl-config.toml), "
+            "or set DRUMS_RL_ALLOW_UNPINNED=1 for a deliberate unpinned build")
+
+
 def recipe_path(cfg: dict) -> Path:
     p = Path(cfg["run"]["recipe"])
     return p if p.is_absolute() else Path(cfg["_dir"]) / p
@@ -385,6 +401,9 @@ def cmd_download(cfg: dict, a) -> None:
 
 
 def cmd_check(cfg: dict, a) -> None:
+    problem = image_pin_problem(cfg.get("image", {}).get("drums_verifiers", ""))
+    if problem:
+        sys.exit(problem)
     sh([str(PRIME_RL / ".venv/bin/python"), "-c", "import drums, drums_verifiers, drums_chat, prime_rl, transformers; "
         "print('imports ok:', drums_verifiers.__name__, prime_rl.__name__, transformers.__version__)"])
     sh([str(PRIME_RL / ".venv/bin/python"), "-c", "import os, drums; c = drums.connect(os.environ['DRUMS_URL'], "

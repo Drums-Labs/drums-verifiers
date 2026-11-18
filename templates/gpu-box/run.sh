@@ -45,6 +45,11 @@ run_in_image() {
 
 case "$cmd" in
   build)
+    # refuse `main` and the PIN_A_COMMIT placeholder (same rule as drums_rl.image_pin_problem)
+    problem=$(python3 -c "import importlib.util, sys, tomllib
+s = importlib.util.spec_from_file_location('drums_rl', sys.argv[2]); r = importlib.util.module_from_spec(s); s.loader.exec_module(r)
+print(r.image_pin_problem(tomllib.load(open(sys.argv[1], 'rb'))['image']['drums_verifiers']) or '')" "$CONFIG" "$TEMPLATES/common/drums_rl.py")
+    [ -z "$problem" ] || { echo "$problem" >&2; exit 2; }
     docker build -t "$IMAGE" -f "$TEMPLATES/common/Dockerfile" \
       --build-arg PRIME_RL_COMMIT="$(py 'print(c["image"]["prime_rl_commit"])')" \
       --build-arg DRUMS_VERIFIERS="$(py 'print(c["image"]["drums_verifiers"])')" \

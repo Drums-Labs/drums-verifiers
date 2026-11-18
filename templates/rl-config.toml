@@ -62,8 +62,12 @@ box_usd_per_hour = 0
 # prime-rl is not on PyPI: it is built from this commit (the one D1 ran). Changing it needs the three editable versions
 # in templates/common/Dockerfile recomputed (see the guide).
 prime_rl_commit = "167d4c3bf1cf9d4444cf1b508f3bc2f231f272dc"
-# The recipe's screenshot-window keys need drums-verifiers newer than 0.2.2. Pin a commit or release for a study.
-drums_verifiers = "drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@main"
+# drums-verifiers for the image. The recipe's screenshot-window keys need 0.3.0 (proposed, not released yet), so the
+# image installs a pinned commit of this repository. Replace PIN_A_COMMIT with the full 40-character sha of the commit
+# you run (for D2: the merge commit of integrate/post-d1 on main). Once 0.3.0 is on PyPI, "drums-verifiers==0.3.0" works
+# too. `main` and the placeholder are refused by `run.sh build`, the Modal app and `check`, so a study never runs on
+# whatever main happens to be (set DRUMS_RL_ALLOW_UNPINNED=1 to try an unpinned build on purpose).
+drums_verifiers = "drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@PIN_A_COMMIT"
 drums_sdk = "drums-sdk==0.3.0"
 
 [modal]

@@ -13,7 +13,8 @@ FROM nvidia/cuda:13.0.1-devel-ubuntu24.04
 # The pins (rl-config.toml [image] passes the first three). The three editable versions belong to PRIME_RL_COMMIT: they
 # are what prime-rl's scripts/docker-editable-pretend-versions.sh prints at that commit. Recompute them when you change it.
 ARG PRIME_RL_COMMIT=167d4c3bf1cf9d4444cf1b508f3bc2f231f272dc
-ARG DRUMS_VERIFIERS="drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@main"
+# DRUMS_VERIFIERS: a 40-character commit sha or a release (rl-config.toml [image] says which); the placeholder fails the build.
+ARG DRUMS_VERIFIERS="drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@PIN_A_COMMIT"
 ARG DRUMS_SDK="drums-sdk==0.3.0"
 ARG VERIFIERS_VERSION=0.4.2.dev47
 ARG RENDERERS_VERSION=0.2.1.dev9
@@ -92,6 +93,7 @@ RUN uv sync --frozen --no-dev \
 # --no-deps: their dependencies (verifiers, pillow) are already in the venv from the lock, and the editable verifiers
 # must not be replaced by a PyPI release.
 RUN cd / && uv pip install --python /app/.venv/bin/python --no-deps "${DRUMS_VERIFIERS}" "${DRUMS_SDK}" \
+    && /app/.venv/bin/python -c "import importlib.metadata as m; print('drums-verifiers', m.version('drums-verifiers'))" \
     && /app/.venv/bin/python -c "import drums, drums_verifiers, drums_chat, drums_tasks; \
 from verifiers.v1.utils.loaders import taskset_class, environment_class, harness_class; \
 print(taskset_class('drums-verifiers'), environment_class('drums-verifiers'), harness_class('drums-chat'))"

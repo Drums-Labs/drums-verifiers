@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.0 - proposed, not released
+
+The post-D1 fixes integrated on one branch (drums-verifiers #12 to #18). Not on PyPI and not tagged; the GPU templates
+install it by commit (`[image] drums_verifiers` in `templates/rl-config.toml`).
+
+- The GPU templates no longer install `main`: `[image] drums_verifiers` is a commit placeholder (`PIN_A_COMMIT`) that
+  `run.sh build`, the Modal app and `check` refuse until it is a 40-character sha or a release (`==X.Y.Z`).
 - `drums_tasks.validate` takes its token from `$DRUMS_TOKEN` by default, like the SDK and the docs (A-14).
   `--token-file` still works and wins when given; without either it falls back to `$DRUMS_TOKEN_FILE`, then
   `~/.drums-token`. New `--url` (default `$DRUMS_URL`).

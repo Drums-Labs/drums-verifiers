@@ -165,8 +165,12 @@ What is new and **not yet validated on GPUs** (marked `[D2]` in the file):
 - `min_inflight` raised from 8 to 3/4 of the desktops (96 of 128).
 
 To run exactly D1's settings, replace the four window lines with `env.agent.harness.images_to_keep = 5` and set
-`min_inflight = 8`. The window keys need drums-verifiers newer than 0.2.2. `[image] drums_verifiers` installs `main`
-from git by default; pin a commit or a release for a study.
+`min_inflight = 8`. The window keys need drums-verifiers 0.3.0 (proposed, not on PyPI yet). `[image] drums_verifiers`
+is a placeholder, `drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@PIN_A_COMMIT`: replace
+`PIN_A_COMMIT` with the full 40-character sha of the commit you run (for D2, the merge commit of the post-D1
+integration on `main`), or with `drums-verifiers==0.3.0` once it is released. `run.sh build`, the Modal app and `check`
+refuse the placeholder and `@main`, so a study never trains on whatever `main` is that day; the image build prints the
+installed version. `DRUMS_RL_ALLOW_UNPINNED=1` lets an unpinned spec through for a deliberate try.
 
 All four rendered files (train, smoke, eval, inference) pass prime-rl 167d4c3's `--dry-run`, and the resolved env config
 shows the window keys. Note that prime-rl also accepts `env.agent.harness` keys the installed drums-verifiers does not

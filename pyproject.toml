@@ -1,6 +1,6 @@
 [project]
 name = "drums-verifiers"
-version = "0.2.2"
+version = "0.3.0"
 description = "Drums computer-use environments (isolated desktops, OSWorld tasks, gate-checked rewards) for verifiers and prime-rl."
 readme = "README.md"
 requires-python = ">=3.11"

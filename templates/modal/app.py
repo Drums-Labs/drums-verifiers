@@ -41,6 +41,19 @@ CFG = _config()
 G, IMG, M = CFG["gpus"], CFG["image"], CFG.get("modal", {})
 REGION = G.get("region") or None
 
+
+def _pin_problem(spec: str) -> str | None:
+    """drums_rl.image_pin_problem (the runner is standard library only, so it loads here without the image)."""
+    import importlib.util
+    s = importlib.util.spec_from_file_location("drums_rl", COMMON / "drums_rl.py")
+    r = importlib.util.module_from_spec(s)
+    s.loader.exec_module(r)
+    return r.image_pin_problem(spec)
+
+
+if modal.is_local() and (_problem := _pin_problem(IMG["drums_verifiers"])):
+    raise SystemExit(_problem)
+
 app = modal.App(M.get("app", "drums-rl"))
 
 image = modal.Image.from_dockerfile(

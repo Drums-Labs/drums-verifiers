@@ -202,8 +202,32 @@ def test_cli_render_writes_four_valid_tomls(env, capsys):
         tomllib.loads((tmp / "out" / f"{name}.toml").read_text())
 
 
-def test_modal_app_imports_when_modal_is_installed():
+def test_image_pin_is_a_commit_or_a_release():
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    assert R.image_pin_problem(f"drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@{sha}", {}) is None
+    assert R.image_pin_problem("drums-verifiers==0.3.0", {}) is None
+    assert "placeholder" in R.image_pin_problem(cfg()["image"]["drums_verifiers"], {})  # the shipped config
+    assert "40-character" in R.image_pin_problem("drums-verifiers @ git+https://github.com/Drums-Labs/drums-verifiers@main", {})
+    assert R.image_pin_problem("drums-verifiers @ git+https://x/y@main", {"DRUMS_RL_ALLOW_UNPINNED": "1"}) is None
+
+
+def test_gpu_box_build_refuses_the_placeholder_before_docker(tmp_path):
+    import subprocess
+    p = subprocess.run(["bash", str(TEMPLATES / "gpu-box" / "run.sh"), "build"], capture_output=True, text=True,
+                       env={**os.environ, "DRUMS_RL_CONFIG": str(TEMPLATES / "rl-config.toml"), "PATH": os.environ["PATH"],
+                            "DRUMS_RL_ALLOW_UNPINNED": ""})
+    assert p.returncode == 2 and "PIN_A_COMMIT" in p.stderr
+
+
+def pinned_config(tmp_path) -> Path:
+    p = tmp_path / "rl-config.toml"
+    p.write_text((TEMPLATES / "rl-config.toml").read_text().replace("PIN_A_COMMIT", "0" * 40))
+    return p
+
+
+def test_modal_app_imports_when_modal_is_installed(tmp_path, monkeypatch):
     pytest.importorskip("modal")
+    monkeypatch.setenv("DRUMS_RL_CONFIG", str(pinned_config(tmp_path)))
     sys.path.insert(0, str(TEMPLATES / "modal"))
     try:
         import app  # noqa: F401
