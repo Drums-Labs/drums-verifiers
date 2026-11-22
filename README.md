@@ -333,7 +333,8 @@ SCALE-CUA authors, as described above.
 
 ## Status
 
-Beta. Tested against verifiers `60290d43` (the commit prime-rl `a566e5d8` pins), drumsd v0.2.0 and drums-sdk 0.2.5.
+Beta. Tested against verifiers `60290d43` (the commit prime-rl `a566e5d8` pins), drumsd v0.2.0, and drums-sdk 0.3.0
+and 0.4.0 (`drums-sdk>=0.3.0,<0.5`).
 
 - Stable: the taskset and environment configuration, the drop rules, the record format, the three tool styles.
 - Working, may change: the task factory's families and checker kinds (`GENERATOR_VERSION` changes when a build's bytes

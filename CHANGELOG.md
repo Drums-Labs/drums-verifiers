@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Works with drums-sdk 0.4.0.** SDK 0.4.0 retries 429 Overloaded inside the client for up to 60 s by default. On top
+  of `DrumsEnv`'s own admission wait this stretched every refused create or fork by the SDK's budget, and the waits
+  never reached the episode's `admission_waits`; a fresh install (which resolves 0.4.0) failed two tests. The client
+  this package builds now turns the SDK's 429 retry off (`RetryPolicy(max_wait_s=0)`, the 0.3.0 behaviour), so
+  admission is handled in one place, bounded by `admission_wait_s` and recorded. With 0.3.0, which has no retry
+  policy, nothing changes. The dependency is `drums-sdk>=0.3.0,<0.5`; `tests/test_sdk_client.py` covers both.
+
 ## 0.3.0 - 2026-11-18
 
 The post-D1 fixes integrated on one branch (drums-verifiers #12 to #18). Not on PyPI and not tagged; the GPU templates
