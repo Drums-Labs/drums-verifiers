@@ -20,11 +20,25 @@ def resolve(url: str | None = None, token_file: str | None = None) -> tuple[str,
     return url, os.environ.get("DRUMS_TOKEN")
 
 
+def no_sdk_admission_retry():
+    """The SDK's 429 retry policy turned off, or None for an SDK without one (< 0.4.0).
+
+    drums-sdk 0.4.0 retries 429 Overloaded inside the client, for up to 60 s by default. DrumsEnv already waits for
+    admission itself (DrumsEnv._admitted: bounded by admission_wait_s, every wait recorded in the episode's
+    admission_waits). Both at once would stretch each refused call by the SDK's budget and hide the waits from the
+    record, so this package keeps admission in one place: its own loop, with the SDK's retry off (max_wait_s=0, the
+    0.3.0 behaviour)."""
+    import drums
+    policy = getattr(drums, "RetryPolicy", None)
+    return policy(max_wait_s=0) if policy is not None else None
+
+
 @functools.lru_cache(maxsize=8)
 def client(url: str | None = None, token_file: str | None = None):
     import drums
     u, tok = resolve(url, token_file)
-    return drums.connect(u, tok)
+    retry = no_sdk_admission_retry()
+    return drums.connect(u, tok, retry=retry) if retry is not None else drums.connect(u, tok)
 
 
 def env(env_id: str, url: str | None = None, token_file: str | None = None):
