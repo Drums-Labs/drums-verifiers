@@ -37,7 +37,7 @@ jobs:
           .github/scripts/pip-audit.sh -r t6/requirements-factory.txt 2>&1 | tee factory-audit.log \
             || { echo "::warning::factory pins have known vulnerabilities (see factory-audit.log); they move with drumsd's checker venv"; \
                  { echo '### factory pins (report-only)'; grep -E '^Found' factory-audit.log; } >> "$GITHUB_STEP_SUMMARY"; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: audit-log
