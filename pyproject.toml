@@ -24,8 +24,9 @@ dependencies = [
     # verifiers v1. prime-rl a566e5d8 pins commit 60290d43 (between the 0.4.0 and 0.4.1 releases); 0.4.1 contains it.
     "verifiers>=0.4.1,<0.5",
     "pillow>=10",
-    # the Drums SDK (distribution drums-sdk, import name drums, standard library only)
-    "drums-sdk>=0.3.0",
+    # the Drums SDK (distribution drums-sdk, import name drums, standard library only). Tested with 0.3.0 and 0.4.0;
+    # with 0.4.0 the SDK's own 429 retry is turned off (sdk.no_sdk_admission_retry) so DrumsEnv handles admission.
+    "drums-sdk>=0.3.0,<0.5",
 ]
 
 [project.urls]
